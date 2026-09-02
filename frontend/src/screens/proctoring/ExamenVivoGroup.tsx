@@ -14,6 +14,7 @@
 import { useState } from 'react';
 import { Icon } from '../../ui/components';
 import type { SesionProctoringResumen } from '../../lib/types';
+import { nombrePersona } from './persona';
 import {
   formatFechaRelativa,
   scoreSoftBg,
@@ -171,13 +172,20 @@ function PersonaVivoRow({
           transition-[filter] hover:brightness-[0.97]
           focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40`}
       >
-        {/* Identidad de la persona */}
+        {/* Identidad de la persona, resuelta server-side. Acá decía la `etiqueta`
+            que manda el cliente, que en el flujo real cae al TÍTULO DEL EXAMEN si
+            el nombre no está cargado: el tutor veía una fila por persona, todas
+            con el mismo texto. Ver persona.ts. */}
         <div className="min-w-0 flex-1">
           <p className="text-body-md font-semibold text-on-surface truncate">
-            {sesion.etiqueta?.trim() || 'Persona sin etiqueta'}
+            {nombrePersona(sesion)}
           </p>
-          <p className="text-label-sm text-on-surface-variant">
+          <p className="text-label-sm text-on-surface-variant truncate">
+            {sesion.alumno_idnumber ? `${sesion.alumno_idnumber} · ` : ''}
             {formatFechaRelativa(sesion.creada_en)}
+            {sesion.es_prueba && (
+              <span className="text-warning font-semibold"> · Prueba</span>
+            )}
           </p>
         </div>
 

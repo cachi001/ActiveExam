@@ -540,6 +540,16 @@ def create_sessions_router(
                 examen_titulo=s.examen_titulo,
                 comision_nombre=s.comision_nombre,
                 materia_nombre=s.materia_nombre,
+                # Identidad del alumno, resuelta server-side contra `usuario`. El
+                # repositorio ya la traia y esta respuesta la descartaba: los tres
+                # campos existian en el schema y nadie los pasaba, asi que salian
+                # null y la pantalla caia a `etiqueta`, que la manda el CLIENTE.
+                # Con 40 alumnos rindiendo, eso le mostraba al tutor 40 tarjetas
+                # con el titulo del examen en vez del nombre de cada persona; y
+                # por la regla dura #6 esa etiqueta puede decir cualquier cosa.
+                alumno_nombre=s.alumno_nombre,
+                alumno_idnumber=s.alumno_idnumber,
+                alumno_email=s.alumno_email,
             )
             for s in sesiones
         ]

@@ -96,9 +96,12 @@ export interface SesionProctoringResumen {
   comision_nombre?: string | null;
   materia_nombre?: string | null;
   /**
-   * Identidad del alumno dueño de la sesión (C-76 tarea 17: columna "Alumno" del
-   * Registro de sesiones). Solo poblado por GET /sessions/registro — el resto de
-   * los listados los deja undefined (compat).
+   * Identidad del alumno dueño de la sesión, resuelta SERVER-SIDE contra `usuario`.
+   *
+   * La pobla tanto GET /sessions/registro como GET /sessions (supervisión en vivo).
+   * Este último la descartaba: salía null y la pantalla caía a `etiqueta`, que la
+   * manda el cliente — con 40 personas rindiendo, el tutor veía 40 filas con el
+   * título del examen. Es la fuente de identidad, no la etiqueta (regla dura #6).
    */
   alumno_idnumber?: string | null;
   alumno_email?: string | null;

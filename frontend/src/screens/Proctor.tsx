@@ -34,6 +34,7 @@ import { ListaSkeleton, ListaVaciaVivo } from './proctoring/ListaEstados';
 import { IndicadorVivo } from './proctoring/IndicadorVivo';
 import { type ExamInfo } from './proctoring/helpers';
 import { examInfoDeSesion } from './proctoring/colaAgregacion';
+import { coincideBusqueda } from './proctoring/persona';
 import { PausasPendientes } from './proctoring/PausasPendientes';
 
 export const PROCTOR_NAV = STAFF_NAV;
@@ -76,6 +77,11 @@ export default function Proctor() {
   const [borrComision, setBorrComision] = useState('');
   const [borrExamen, setBorrExamen] = useState('');
   const [filtros, setFiltros] = useState({ materia: '', comision: '', examen: '' });
+  // Buscar a UNA persona. Separado del panel de filtros a propósito: ese panel no
+  // se le muestra al tutor, y filtra por materia/comisión, que es lo que el tutor
+  // ya tiene fijo. Lo que le falta es encontrar a alguien entre 40 rindiendo, y
+  // eso se resuelve tipeando, sin botón de "Aplicar" en el medio.
+  const [buscaPersona, setBuscaPersona] = useState('');
   // C-69 admin-sync: si el admin desactivó las pausas, no se muestra la cola de
   // solicitudes. Default `true` (degradación segura).
   const [pausasHabilitadas, setPausasHabilitadas] = useState(true);
@@ -171,9 +177,12 @@ export default function Proctor() {
       if (textoExamen && !(s.examen_titulo ?? '').toLowerCase().includes(textoExamen)) {
         return false;
       }
+      // Buscador de PERSONA: aplica a todos los roles, incluido el tutor, que es
+      // el único que no tiene el panel de filtros y el que más lo necesita.
+      if (!coincideBusqueda(s, buscaPersona)) return false;
       return true;
     });
-  }, [sesiones, filtros, materias, comisiones]);
+  }, [sesiones, filtros, materias, comisiones, buscaPersona]);
 
   const { gruposExamen, diagnostico, otras } = useMemo(() => {
     const examen: SesionProctoringResumen[] = [];
@@ -244,6 +253,33 @@ export default function Proctor() {
         {/* Resumen agregado del lote actual — va PRIMERO (las métricas del panel
             arriba de todo, antes de la cola de solicitudes de pausa). */}
         {!cargaInicial && sesionesVisibles.length > 0 && <ResumenVivo sesiones={sesionesVisibles} />}
+
+        {/* Buscador de persona: para TODOS los roles. El tutor no tiene el panel
+            de filtros de abajo, así que sin esto no tenía ninguna forma de
+            encontrar a alguien salvo scrollear las tarjetas a ojo. */}
+        <div className="flex items-center gap-sm">
+          <div className="relative flex-1 max-w-md">
+            <Icon
+              name="search"
+              className="absolute left-sm top-1/2 -translate-y-1/2 text-[18px] text-on-surface-variant pointer-events-none"
+            />
+            <input
+              type="search"
+              value={buscaPersona}
+              onChange={(e) => setBuscaPersona(e.target.value)}
+              placeholder="Buscar persona por nombre, legajo o correo…"
+              aria-label="Buscar persona"
+              className="w-full rounded-xl border border-outline-variant/60 bg-surface-container-lowest
+                pl-9 pr-md py-sm text-body-md text-on-surface
+                focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            />
+          </div>
+          {buscaPersona.trim() !== '' && (
+            <span className="text-label-sm text-on-surface-variant whitespace-nowrap">
+              {sesionesVisibles.length} de {sesiones.length}
+            </span>
+          )}
+        </div>
 
         {/* c-78 §11.3: filtros SOLO para coordinador/profesor/admin. El tutor no
             los ve porque su alcance ya está fijado a sus comisiones — un selector
