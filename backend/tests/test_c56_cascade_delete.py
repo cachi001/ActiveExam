@@ -79,10 +79,7 @@ async def test_cascade_delete_usuario_elimina_foto_y_embedding(
 
         foto = FotoReferenciaModel(
             usuario_id=usuario.id,
-            bucket="activeexam-perfil",
-            object_key=f"perfil/{usuario.id}/foto.png",
-            content_type="image/png",
-            tamano_bytes=64,
+            foto_bytes=b"\x89PNG\r\n\x1a\n",
             hash_sha256="a" * 64,
             vigente=True,
         )

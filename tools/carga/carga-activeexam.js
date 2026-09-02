@@ -42,12 +42,15 @@ const EVENTOS_POR_MINUTO = Number(__ENV.EVENTOS_POR_MINUTO || 20);
 // que solo postea eventos da un numero comodo que no describe la realidad.
 //
 // Las cadencias espejan al cliente EXACTAMENTE:
-//   - ChatBox      -> 3,5 s fijos (POLL_MS en ui/ChatBox.tsx)
+//   - ChatBox      -> 8 s mientras nadie escribio (POLL_CHAT_INACTIVO_MS en
+//     ui/chat/chatCadencia.ts), 3,5 s con la conversacion viva. El alumno virtual
+//     no chatea, asi que se queda en reposo, que es el caso del 99% del examen.
+//     Para medir el peor caso (todos conversando) correr con CHAT_POLL_MS=3500.
 //   - PausaAlumno  -> 20 s en reposo (POLL_PAUSA_INACTIVO_MS). El alumno virtual
 //     no pide pausas, asi que se queda en reposo, que es el caso del 99% del examen.
 const CHAT = (__ENV.CHAT || 'true') !== 'false';
 const PAUSAS = (__ENV.PAUSAS || 'true') !== 'false';
-const CHAT_POLL_MS = Number(__ENV.CHAT_POLL_MS || 3500);
+const CHAT_POLL_MS = Number(__ENV.CHAT_POLL_MS || 8000);
 const PAUSA_POLL_MS = Number(__ENV.PAUSA_POLL_MS || 20000);
 
 // Fraccion de eventos que llevan captura (0 a 1). APAGADO por defecto a

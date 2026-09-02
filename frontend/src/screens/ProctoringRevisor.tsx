@@ -599,9 +599,10 @@ export default function ProctoringRevisor() {
         </FiltrosPanel>
 
         <Card>
+          {/* "sesión" pierde la tilde al pluralizar: pegarle 'es' daba "sesiónes". */}
           <SectionTitle
             icon="history"
-            sub={`${total} sesión${total !== 1 ? 'es' : ''}`}
+            sub={`${total} ${total === 1 ? 'sesión' : 'sesiones'}`}
             action={<PageSizeSelect value={pageSize} onChange={(ps) => { setPageSize(ps); setPage(1); }} />}
           >
             Sesiones finalizadas

@@ -114,7 +114,12 @@ export function PausasPendientes({ tutorActor }: { tutorActor?: string | null })
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-label-md font-semibold text-on-surface truncate">
-                    {p.etiqueta?.trim() || `Sesión ${p.session_id.slice(0, 8)}…`}
+                    {/* QUIÉN la pide. La etiqueta la manda el cliente y en el
+                        flujo real cae al título del examen: el tutor leía
+                        "Parcial 1 — Programación III pide una pausa". */}
+                    {p.alumno_nombre?.trim() ||
+                      p.etiqueta?.trim() ||
+                      `Sesión ${p.session_id.slice(0, 8)}…`}
                   </p>
                   <p className="text-label-sm text-on-surface-variant">{formatFechaRelativa(p.solicitada_en)}</p>
                 </div>

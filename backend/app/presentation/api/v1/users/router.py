@@ -212,7 +212,17 @@ class UsuarioDetalleResponse(BaseModel):
     eliminado_en: str | None
     creado_en: str | None = None
     ultimo_acceso_en: str | None = None
-    ultimo_acceso_en: str | None = None
+    # Bloqueo por intentos fallidos de login (5 intentos -> 15 minutos). Se expone
+    # porque NINGUNA pantalla lo mostraba: el admin se enteraba solo si la persona
+    # avisaba, y el día del examen eso es alguien esperando quince minutos.
+    # `bloqueado` es derivado (la fecha vieja queda en la fila aunque ya haya
+    # vencido), asi que leer `bloqueado_hasta` crudo diria "bloqueado" de mas.
+    bloqueado: bool = False
+    bloqueado_hasta: str | None = None
+    bloqueo_segundos_restantes: int | None = None
+    # Se muestra aunque el bloqueo haya vencido: el contador NO se limpia solo, y
+    # con 5 encima un unico error mas vuelve a bloquear otros 15 minutos.
+    intentos_fallidos: int = 0
     # c-78: el userid del alumno en el campus, que Moodle manda en cada ingreso
     # por el link (claim `sub`). Se expone para poder VERIFICAR que llega bien:
     # es uno de los datos con los que se le devuelve la nota, y sin verlo no hay
@@ -935,6 +945,29 @@ async def reactivar_usuario(
 # ---------------------------------------------------------------------------
 
 
+def _estado_de_bloqueo(usuario: UsuarioModel) -> tuple[bool, str | None, int | None]:
+    """Traduce ``bloqueado_hasta`` a (bloqueado, hasta_iso, segundos_restantes).
+
+    La fila conserva la fecha del último bloqueo aunque ya haya vencido, así que
+    el estado hay que derivarlo comparando contra el reloj. Un bloqueo vencido
+    devuelve todo en falso/None: mostrar una fecha pasada haría que el admin
+    desbloquee a alguien que ya podía entrar.
+
+    Se devuelven también los segundos que faltan para que la pantalla pueda
+    contar hacia atrás sin depender de que su reloj coincida con el del servidor
+    (mismo criterio que el cartel del login).
+    """
+    hasta = getattr(usuario, "bloqueado_hasta", None)
+    if hasta is None:
+        return False, None, None
+    if hasta.tzinfo is None:
+        hasta = hasta.replace(tzinfo=UTC)
+    restantes = int((hasta - datetime.now(UTC)).total_seconds())
+    if restantes <= 0:
+        return False, None, None
+    return True, hasta.isoformat(), restantes
+
+
 async def _get_usuario_or_404(session: AsyncSession, usuario_id: str) -> UsuarioModel:
     """Devuelve el UsuarioModel por id (activo o dado de baja). 404 si no existe."""
     result = await session.execute(
@@ -1013,6 +1046,8 @@ async def obtener_usuario(
                 for comision, materia in result.all()
             ]
 
+    bloqueado, bloqueado_hasta, segundos_restantes = _estado_de_bloqueo(usuario)
+
     return UsuarioDetalleResponse(
         id=str(usuario.id),
         username=usuario.username,
@@ -1024,6 +1059,10 @@ async def obtener_usuario(
         eliminado_en=str(usuario.eliminado_en) if usuario.eliminado_en is not None else None,
         creado_en=str(usuario.creado_en) if getattr(usuario, "creado_en", None) is not None else None,
         ultimo_acceso_en=str(usuario.ultimo_acceso_en) if getattr(usuario, "ultimo_acceso_en", None) is not None else None,
+        bloqueado=bloqueado,
+        bloqueado_hasta=bloqueado_hasta,
+        bloqueo_segundos_restantes=segundos_restantes,
+        intentos_fallidos=getattr(usuario, "intentos_fallidos", 0) or 0,
         moodle_userid=(
             str((usuario.attrs_federados or {}).get("moodle_userid"))
             if (usuario.attrs_federados or {}).get("moodle_userid") is not None
@@ -1076,6 +1115,24 @@ async def obtener_consent_profile(
 # ---------------------------------------------------------------------------
 
 
+def _vencimiento_de_referencia(fecha_captura) -> str | None:
+    """Cuando vence una referencia biometrica capturada en ``fecha_captura``.
+
+    Se calcula con la MISMA cuenta que decide si hay que rehacer la captura
+    (`_sumar_meses` + `BIOMETRIC_VALIDITY_MONTHS`), para que la fecha que ve el
+    admin sea exactamente la que aplica el sistema y no dos numeros que pueden
+    separarse.
+    """
+    if fecha_captura is None:
+        return None
+    from app.application.enrollment.guardar_embedding_referencia import (
+        BIOMETRIC_VALIDITY_MONTHS,
+        _sumar_meses,
+    )
+
+    return str(_sumar_meses(fecha_captura, BIOMETRIC_VALIDITY_MONTHS))
+
+
 @router.get(
     "/{usuario_id}/biometria/referencia/estado",
     response_model=BiometriaReferenciaEstadoAdminResponse,
@@ -1121,10 +1178,15 @@ async def obtener_biometria_referencia_estado(
     return BiometriaReferenciaEstadoAdminResponse(
         tiene_referencia_vigente=tiene_referencia,
         algoritmo=emb.algoritmo if emb is not None else None,
+        # La columna `fecha_expiracion` no la escribe nadie: queda NULL siempre, y
+        # leerla de ahi dejaba "Fecha de vencimiento" VACIO en pantalla, mientras
+        # el consentimiento que el alumno acepta promete una vigencia de 24 meses.
+        # La vigencia real se DERIVA de la fecha de captura (misma cuenta que usa
+        # `_referencia_sigue_vigente` para decidir si hay que rehacerla), asi que se
+        # calcula igual acá. Persistirla seria peor: cambiar la vigencia dejaria las
+        # filas viejas con una fecha que ya no es la que aplica la logica.
         fecha_expiracion=(
-            str(emb.fecha_expiracion)
-            if emb is not None and emb.fecha_expiracion is not None
-            else None
+            _vencimiento_de_referencia(emb.fecha_captura) if emb is not None else None
         ),
         created_at=str(emb.created_at) if emb is not None else None,
         tiene_foto=foto_row is not None,
@@ -1212,6 +1274,13 @@ async def resetear_password(
 
         usuario.password_hash = password_hash
         usuario.debe_cambiar_password = True
+        # Destraba tambien el lockout por intentos fallidos. El login corta por
+        # `bloqueado_hasta` ANTES de verificar la contraseña, asi que sin esto el
+        # admin daba una clave nueva y la persona seguia sin poder entrar: no habia
+        # ninguna otra forma de desbloquear salvo entrar por SQL a la base. El dia
+        # del examen eso deja a alguien afuera 15 minutos sin salida.
+        usuario.intentos_fallidos = 0
+        usuario.bloqueado_hasta = None
         username = usuario.username
         await session.commit()
 
@@ -1237,4 +1306,100 @@ async def resetear_password(
         usuario_id=str(usuario_id),
         username=username,
         password_temporal=password_plain,
+    )
+
+
+class DesbloquearCuentaResponse(BaseModel):
+    """Respuesta de POST /users/{id}/desbloquear."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    usuario_id: str
+    username: str
+    bloqueado: bool = False
+    #: True si la cuenta estaba realmente trabada al momento de la llamada. Sirve
+    #: para que la pantalla distinga "la destrabé" de "no hacía falta".
+    estaba_bloqueada: bool
+
+
+@router.post(
+    "/{usuario_id}/desbloquear",
+    response_model=DesbloquearCuentaResponse,
+    summary="Destrabar una cuenta bloqueada por intentos fallidos (solo admin_sistema)",
+)
+async def desbloquear_cuenta(
+    usuario_id: str,
+    request: Request,
+    principal: AuthenticatedPrincipal = Depends(_require_admin),
+) -> DesbloquearCuentaResponse:
+    """Limpia el bloqueo por intentos fallidos y NADA más.
+
+    El login corta por ``bloqueado_hasta`` antes de verificar la contraseña, así
+    que hasta ahora la única forma de destrabar a alguien era resetearle la
+    contraseña. Eso funciona, pero arrastra dos efectos que en pleno examen
+    estorban: la clave que la persona sabe deja de servir, y encima queda
+    obligada a elegir una nueva antes de poder rendir.
+
+    Este endpoint hace solo lo necesario: pone ``intentos_fallidos`` en cero y
+    ``bloqueado_hasta`` en NULL. **No toca ``password_hash`` ni
+    ``debe_cambiar_password``**: la persona vuelve a entrar con la suya.
+
+    DOMINIO CRÍTICO (auth). Las guardas:
+
+    - **solo ``admin_sistema``** (``_require_admin``): desbloquear es levantar la
+      defensa contra fuerza bruta de una cuenta ajena.
+    - **404 en cuentas dadas de baja**: a quien fue dado de baja no se le
+      devuelve el acceso por esta puerta (para eso está reactivar).
+    - **idempotente**: destrabar una cuenta que no estaba trabada no es un error.
+      El admin no siempre sabe si lo está, y hacerlo fallar solo lo confundiría.
+
+    Queda registrado en auditoría quién destrabó a quién.
+    """
+    session_factory = _get_session_factory(request)
+
+    async with session_factory() as session:
+        usuario = (
+            await session.execute(
+                select(UsuarioModel).where(UsuarioModel.id == usuario_id)
+            )
+        ).scalar_one_or_none()
+
+        if usuario is None or usuario.eliminado_en is not None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Usuario no encontrado.",
+            )
+
+        estaba_bloqueada, _, _ = _estado_de_bloqueo(usuario)
+        usuario.intentos_fallidos = 0
+        usuario.bloqueado_hasta = None
+        username = usuario.username
+        await session.commit()
+
+    from app.application.audit.service import registrar_seguro
+
+    await registrar_seguro(
+        session_factory,
+        actor=principal.email,
+        accion=AccionAuditoria.USUARIO_EDICION,
+        modulo=ModuloAuditoria.USUARIOS,
+        entidad=EntidadAuditoria.USUARIO,
+        entidad_id=str(usuario_id),
+        ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        proposito=(
+            f"Destrabó la cuenta de {username}, bloqueada por intentos "
+            "fallidos. La contraseña no se tocó."
+            if estaba_bloqueada
+            else (
+                f"Pidió destrabar la cuenta de {username}, que no estaba "
+                "bloqueada. Se limpió el contador de intentos fallidos."
+            )
+        ),
+    )
+
+    return DesbloquearCuentaResponse(
+        usuario_id=str(usuario_id),
+        username=username,
+        estaba_bloqueada=estaba_bloqueada,
     )

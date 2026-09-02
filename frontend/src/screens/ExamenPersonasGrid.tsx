@@ -27,6 +27,7 @@ import {
   INNER_CHIP_BG,
 } from './proctoring/helpers';
 import { examInfoDeSesion, subtituloExamen } from './proctoring/colaAgregacion';
+import { coincideBusqueda, correoPersona, inicialDe, nombrePersona } from './proctoring/persona';
 
 const POLL_MS = 4000;
 const DETALLE_ROUTE = '/admin/proctoring-session-detail';
@@ -40,6 +41,9 @@ export default function ExamenPersonasGrid() {
 
   const [personas, setPersonas] = useState<SesionProctoringResumen[]>([]);
   const [cargaInicial, setCargaInicial] = useState(true);
+  // Buscar por persona. Con 40 rindiendo, encontrar a una scrolleando tarjetas es
+  // el momento en que el tutor pierde el examen de vista.
+  const [busqueda, setBusqueda] = useState('');
   const enVuelo = useRef(false);
   const toastRef = useRef(toast);
   toastRef.current = toast;
@@ -90,6 +94,13 @@ export default function ExamenPersonasGrid() {
 
   const eventos = personas.reduce((acc, s) => acc + s.total_eventos, 0);
   const riesgoAlto = personas.filter((s) => nivelRiesgo(s.score, s.umbral_cola_revision_efectivo) === 'alto').length;
+
+  // El buscador filtra la GRILLA, no los totales de arriba: el tutor tiene que
+  // seguir viendo cuánta gente hay y cuánto riesgo hay mientras busca a alguien.
+  const visibles = useMemo(
+    () => personas.filter((s) => coincideBusqueda(s, busqueda)),
+    [personas, busqueda],
+  );
 
   return (
     <StaffShell nav={STAFF_NAV} title="Supervisión en vivo">
@@ -148,11 +159,48 @@ export default function ExamenPersonasGrid() {
             <SectionTitle sub={`${personas.length} ${personas.length === 1 ? 'persona' : 'personas'} · actualiza cada ${POLL_MS / 1000}s`}>
               Personas en curso
             </SectionTitle>
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-md">
-              {personas.map((s) => (
-                <PersonaCard key={s.id} sesion={s} onAbrir={abrir} />
-              ))}
+
+            {/* Buscador de persona. Va acá y no en el panel de filtros porque el
+                tutor no tiene ese panel (solo ve su comisión) y es justamente
+                quien más necesita encontrar a alguien rápido. */}
+            <div className="flex items-center gap-sm mb-md">
+              <div className="relative flex-1 max-w-md">
+                <Icon
+                  name="search"
+                  className="absolute left-sm top-1/2 -translate-y-1/2 text-[18px] text-on-surface-variant pointer-events-none"
+                />
+                <input
+                  type="search"
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  placeholder="Buscar por nombre o correo…"
+                  aria-label="Buscar persona"
+                  className="w-full rounded-xl border border-outline-variant/60 bg-surface-container-lowest
+                    pl-9 pr-md py-sm text-body-md text-on-surface
+                    focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                />
+              </div>
+              {busqueda.trim() !== '' && (
+                <span className="text-label-sm text-on-surface-variant whitespace-nowrap">
+                  {visibles.length} de {personas.length}
+                </span>
+              )}
             </div>
+
+            {visibles.length === 0 ? (
+              <Card className="flex flex-col items-center justify-center text-center gap-sm py-xl">
+                <Icon name="person_search" className="text-[28px] text-on-surface-variant" />
+                <p className="text-body-md text-on-surface-variant">
+                  Ninguna persona coincide con «{busqueda.trim()}».
+                </p>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-sm">
+                {visibles.map((s) => (
+                  <PersonaCard key={s.id} sesion={s} onAbrir={abrir} />
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -168,7 +216,9 @@ function PersonaCard({
   onAbrir: (s: SesionProctoringResumen) => void;
 }) {
   const alto = nivelRiesgo(sesion.score, sesion.umbral_cola_revision_efectivo) === 'alto';
-  const etiqueta = sesion.etiqueta?.trim() || 'Persona sin etiqueta';
+  // QUIÉN es. Sale del servidor; la etiqueta del cliente es solo el fallback.
+  const nombre = nombrePersona(sesion);
+  const discrepancias = sesion.total_discrepancias ?? 0;
 
   return (
     <div
@@ -181,54 +231,60 @@ function PersonaCard({
           onAbrir(sesion);
         }
       }}
-      className={`group cursor-pointer rounded-2xl border ${scoreCardAcento(sesion.score, sesion.umbral_cola_revision_efectivo)}
-        p-md shadow-card transition-all duration-200
+      className={`group cursor-pointer rounded-xl border ${scoreCardAcento(sesion.score, sesion.umbral_cola_revision_efectivo)}
+        p-sm shadow-card transition-all duration-200
         hover:shadow-card-lg hover:-translate-y-px focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40
         ${alto ? 'ring-1 ring-error/30' : ''}`}
     >
-      <div className="flex items-start justify-between gap-sm">
+      <div className="flex items-center justify-between gap-sm">
         <div className="flex items-center gap-sm min-w-0">
-          <div className="w-10 h-10 rounded-full bg-white/70 text-primary flex items-center justify-center font-semibold shrink-0">
-            {etiqueta.charAt(0).toUpperCase()}
+          <div className="w-8 h-8 rounded-full bg-white/70 text-primary flex items-center justify-center text-label-md font-semibold shrink-0">
+            {inicialDe(sesion)}
           </div>
           <div className="min-w-0">
-            <p className="text-body-md font-semibold text-on-surface truncate">{etiqueta}</p>
-            <p className="text-label-sm text-on-surface-variant">{formatFechaRelativa(sesion.creada_en)}</p>
+            <p className="text-body-md font-semibold text-on-surface truncate" title={nombre}>
+              {nombre}
+            </p>
+            <p className="text-label-sm text-on-surface-variant truncate">
+              {/* Correo, NO `alumno_idnumber`: ese es el username, y para quien
+                  entra por el campus vale "lti:1:7". Acá no se maneja legajo. */}
+              {correoPersona(sesion) ? `${correoPersona(sesion)} · ` : ''}
+              {formatFechaRelativa(sesion.creada_en)}
+            </p>
           </div>
         </div>
         <span
-          className={`inline-flex items-center justify-center min-w-[44px] px-sm py-base rounded-full
+          className={`inline-flex items-center justify-center min-w-[40px] px-sm py-base rounded-full
             text-label-sm font-bold tabular-nums shrink-0 ${INNER_CHIP_BG} ${scoreTextColor(sesion.score, sesion.umbral_cola_revision_efectivo)}`}
         >
           {sesion.score}
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-sm mt-md">
-        <Metrica icon="notifications" label="Eventos" valor={sesion.total_eventos ?? 0} />
-        <Metrica
-          icon="rule"
-          label="Discrepancias"
-          valor={sesion.total_discrepancias ?? 0}
-          alerta={(sesion.total_discrepancias ?? 0) > 0}
+      {/* Métricas en una línea: con 40 tarjetas en pantalla, dos cajas por tarjeta
+          eran ruido y obligaban a scrollear para barrer a la gente. */}
+      <div className="flex items-center gap-sm mt-sm text-label-sm text-on-surface-variant">
+        <span className="inline-flex items-center gap-base">
+          <Icon name="notifications" className="text-[15px]" />
+          {sesion.total_eventos ?? 0}
+        </span>
+        <span
+          className={`inline-flex items-center gap-base ${discrepancias > 0 ? 'text-error font-semibold' : ''}`}
+        >
+          <Icon name="rule" className="text-[15px]" />
+          {discrepancias}
+        </span>
+        {sesion.es_prueba && (
+          <span className="inline-flex items-center gap-base text-warning font-semibold">
+            <Icon name="science" className="text-[15px]" />
+            Prueba
+          </span>
+        )}
+        <Icon
+          name="arrow_forward"
+          className="text-[16px] ml-auto opacity-0 group-hover:opacity-100 transition-opacity"
         />
       </div>
-
-      <div className="flex items-center justify-end gap-base mt-md text-label-md font-semibold text-on-surface-variant opacity-0 group-hover:opacity-100 transition-opacity">
-        Ver detalle
-        <Icon name="arrow_forward" className="text-[18px]" />
-      </div>
-    </div>
-  );
-}
-
-function Metrica({ icon, label, valor, alerta = false }: { icon: string; label: string; valor: number; alerta?: boolean }) {
-  return (
-    <div className="rounded-xl bg-white/60 border border-white/50 p-sm">
-      <p className="inline-flex items-center gap-base text-label-sm text-on-surface-variant">
-        <Icon name={icon} className="text-[15px]" /> {label}
-      </p>
-      <p className={`font-headline text-title-lg font-bold tabular-nums ${alerta ? 'text-error' : 'text-on-surface'}`}>{valor}</p>
     </div>
   );
 }

@@ -230,3 +230,76 @@ async def test_usuario_inexistente_da_404(app, factory):
         )
 
     assert resp.status_code == 404, resp.text
+
+
+# ---------------------------------------------------------------------------
+# Desbloqueo de la cuenta (1/9/2026, antes del examen real del 5/9).
+#
+# El lockout por intentos fallidos (5 intentos -> 15 min) se chequea ANTES de
+# verificar la contraseña, asi que resetearla NO destrababa nada: el admin le
+# daba una clave nueva y la persona seguia sin poder entrar. No habia ningun
+# endpoint ni pantalla de desbloqueo, con lo cual la unica salida era entrar por
+# SQL a la base de produccion con el examen en curso.
+#
+# El dia del examen esto es exactamente lo que va a pasar: alguien nervioso se
+# equivoca cinco veces y pierde quince minutos sin que nadie pueda ayudarlo.
+# Resetear la contraseña es la accion que el admin YA tiene a mano, asi que es
+# la que tiene que destrabar.
+# ---------------------------------------------------------------------------
+
+
+async def _bloquear(factory, usuario_id: str, *, minutos: int = 15) -> None:
+    """Deja la cuenta como la dejan 5 intentos fallidos seguidos."""
+    from datetime import UTC, datetime, timedelta
+
+    async with factory() as s:
+        u = (
+            await s.execute(select(UsuarioModel).where(UsuarioModel.id == usuario_id))
+        ).scalar_one()
+        u.intentos_fallidos = 5
+        u.bloqueado_hasta = datetime.now(UTC) + timedelta(minutes=minutos)
+        await s.commit()
+
+
+@pytest.mark.asyncio
+async def test_resetear_destraba_la_cuenta_bloqueada(app, factory):
+    """Sin esto, el admin resetea la clave y la persona sigue sin poder entrar."""
+    uid = await _crear_usuario(factory)
+    await _bloquear(factory, uid)
+
+    async with _cliente(app, ["admin_sistema"]) as c:
+        resp = await c.post(f"/api/v1/users/{uid}/resetear-password")
+
+    assert resp.status_code == 200, resp.text
+    fila = await _fila(factory, uid)
+    assert fila.bloqueado_hasta is None, "la cuenta quedo bloqueada igual"
+    assert fila.intentos_fallidos == 0, "el contador de intentos no se limpio"
+
+
+@pytest.mark.asyncio
+async def test_la_clave_nueva_sirve_en_una_cuenta_que_estaba_bloqueada(app, factory):
+    """Triangulación: destrabar sin dejar servible la clave nueva no alcanza."""
+    uid = await _crear_usuario(factory)
+    await _bloquear(factory, uid, minutos=60)
+
+    async with _cliente(app, ["admin_sistema"]) as c:
+        resp = await c.post(f"/api/v1/users/{uid}/resetear-password")
+
+    nueva = resp.json()["password_temporal"]
+    fila = await _fila(factory, uid)
+    assert verificar_password(nueva, fila.password_hash) is True
+    assert fila.bloqueado_hasta is None
+
+
+@pytest.mark.asyncio
+async def test_en_una_cuenta_sin_bloqueo_no_cambia_nada(app, factory):
+    """Triangulación: el desbloqueo no puede romper el caso normal."""
+    uid = await _crear_usuario(factory)
+
+    async with _cliente(app, ["admin_sistema"]) as c:
+        resp = await c.post(f"/api/v1/users/{uid}/resetear-password")
+
+    assert resp.status_code == 200, resp.text
+    fila = await _fila(factory, uid)
+    assert fila.bloqueado_hasta is None
+    assert fila.intentos_fallidos == 0

@@ -52,9 +52,8 @@ class FotoReferenciaRepository:
         self,
         *,
         usuario_id: str,
-        uri_storage: str,
+        foto_bytes: bytes,
         hash_sha256: str,
-        bucket: str,
     ) -> FotoReferenciaModel:
         """Crea un nuevo registro vigente de foto de referencia.
 
@@ -63,33 +62,52 @@ class FotoReferenciaRepository:
 
         Args:
             usuario_id: UUID del usuario (FK a usuario.id).
-            uri_storage: clave / key del objeto en el bucket MinIO/S3.
+            foto_bytes: contenido de la imagen (se guarda como BYTEA en Postgres).
             hash_sha256: hash SHA-256 del contenido de la foto (integridad).
-            bucket: nombre del bucket donde se almacena la foto.
 
         Returns:
             El modelo ORM recien creado, con ``id`` asignado por la DB.
         """
         row = FotoReferenciaModel(
             usuario_id=usuario_id,
-            uri_storage=uri_storage,
+            foto_bytes=foto_bytes,
             hash_sha256=hash_sha256,
-            bucket=bucket,
             vigente=True,
         )
         self._session.add(row)
         await self._session.flush()
         return row
 
+    # Version MinIO (pendiente, no borrada). Guardaba solo los punteros al objeto
+    # del bucket. Descomentar junto con las columnas del modelo cuando exista la
+    # migracion que las cree — ver el docstring de FotoReferenciaModel.
+    #
+    # async def crear_en_bucket(
+    #     self,
+    #     *,
+    #     usuario_id: str,
+    #     uri_storage: str,
+    #     hash_sha256: str,
+    #     bucket: str,
+    # ) -> FotoReferenciaModel:
+    #     row = FotoReferenciaModel(
+    #         usuario_id=usuario_id,
+    #         uri_storage=uri_storage,
+    #         hash_sha256=hash_sha256,
+    #         bucket=bucket,
+    #         vigente=True,
+    #     )
+    #     self._session.add(row)
+    #     await self._session.flush()
+    #     return row
+
     async def obtener_vigente(self, usuario_id: str) -> str | None:
         """Devuelve el ``id`` de la foto vigente del usuario, o None si no existe.
 
-        Selecciona SOLO la columna ``id`` (existe tanto en el schema full como en
-        el activeexam), no la fila entera: el modelo full trae ``uri_storage``/``bucket``
-        y el activeexam ``foto_bytes`` — un ``select(FotoReferenciaModel)`` pediría
-        ``uri_storage`` y revienta contra la tabla activeexam (UndefinedColumnError). El
-        único consumidor (gate de perfil en la matriculación) solo comprueba
-        existencia (``is not None``), así que el id alcanza.
+        Selecciona SOLO la columna ``id``, no la fila entera: el unico consumidor
+        (gate de perfil en la matriculacion) comprueba existencia
+        (``is not None``), asi que traer el binario de la foto para tirarlo seria
+        pura transferencia al pedo.
         """
         result = await self._session.execute(
             select(FotoReferenciaModel.id).where(

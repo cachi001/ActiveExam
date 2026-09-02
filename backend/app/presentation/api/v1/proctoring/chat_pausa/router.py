@@ -347,10 +347,11 @@ def create_chat_pausa_router(
                 id=p.id,
                 session_id=p.session_id,
                 etiqueta=etiqueta,
+                alumno_nombre=alumno_nombre,
                 motivo=p.motivo,
                 solicitada_en=p.solicitada_en,
             )
-            for (p, etiqueta) in pendientes
+            for (p, etiqueta, alumno_nombre) in pendientes
         ]
 
     @router.patch(

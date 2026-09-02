@@ -12,6 +12,7 @@
  */
 import { Icon, Badge } from '../../ui/components';
 import type { SesionProctoringResumen } from '../../lib/types';
+import { nombrePersona } from './persona';
 import {
   formatFechaRelativa,
   formatFecha,
@@ -55,10 +56,15 @@ export function SesionVivoCard({
       <div className="flex items-start justify-between gap-sm">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-sm flex-wrap">
+            {/* QUIÉN es, no cómo se llama el examen. Sale del servidor; la
+                etiqueta del cliente queda de fallback (ver persona.ts). */}
             <h3 className="font-headline text-title-lg text-on-surface tracking-tight truncate">
-              {sesion.etiqueta?.trim() || 'Sesión sin etiqueta'}
+              {nombrePersona(sesion)}
             </h3>
             <Badge tone={modoBadgeTone(sesion.modo)}>{modoLabel(sesion.modo)}</Badge>
+            {/* Un ensayo del docente no es un alumno rindiendo: sin esto el tutor
+                persigue un fantasma en pleno examen. */}
+            {sesion.es_prueba && <Badge tone="warning">Prueba</Badge>}
             {riesgoAlto && (
               <Badge tone="error" dot>
                 Atención

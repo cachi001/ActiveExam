@@ -15,10 +15,8 @@ import { Card, Button, Icon } from './components';
 import { api } from '../lib/api';
 import { useToast } from './toast';
 import { AVISO_SOLO_RESPONDER, puedeResponder } from './chat/soloResponder';
+import { intervaloDeChat } from './chat/chatCadencia';
 import type { AutorChat, MensajeChat } from '../lib/types';
-
-/** Intervalo de polling del chat (ms). Suficiente para sentirse "en vivo". */
-const POLL_MS = 3500;
 
 /**
  * Cooldown anti-flood entre mensajes del ALUMNO (segundos). No bloquea la
@@ -103,18 +101,28 @@ export function ChatBox({
     }
   }, [sessionId, merge]);
 
-  // Polling con cleanup: carga inicial + intervalo único que se limpia al unmount.
-  // Al cambiar de sesión, reseteamos el cursor y la lista para no mezclar canales.
+  // Cadencia adaptativa: mientras nadie escribió se pregunta espaciado, y en cuanto
+  // hay conversación se vuelve a 3,5 s. Con 100 alumnos el intervalo fijo se
+  // llevaba ~29 de los 80 req/s del techo y frenaba el autoguardado del examen.
+  // Ver `chat/chatCadencia.ts`.
+  const intervaloMs = intervaloDeChat(mensajes[mensajes.length - 1]?.creado_en);
+
+  // Dos efectos separados a propósito. El reseteo depende SOLO de la sesión: si
+  // viviera junto al intervalo, pasar de la cadencia lenta a la rápida (o sea, la
+  // llegada del primer mensaje) volvería a vaciar la lista y el mensaje recién
+  // llegado desaparecería de pantalla justo cuando aparece.
   useEffect(() => {
     ultimoTs.current = undefined;
     setMensajes([]);
-    if (!sessionId) return;
-    void refrescar();
-    // Solo lectura (grabada): carga única, sin polling.
-    if (readOnly) return;
-    const id = setInterval(() => void refrescar(), POLL_MS);
+    if (sessionId) void refrescar();
+  }, [sessionId, refrescar]);
+
+  // Polling con cleanup. Solo lectura (grabada): carga única, sin polling.
+  useEffect(() => {
+    if (!sessionId || readOnly) return;
+    const id = setInterval(() => void refrescar(), intervaloMs);
     return () => clearInterval(id);
-  }, [sessionId, refrescar, readOnly]);
+  }, [sessionId, refrescar, readOnly, intervaloMs]);
 
   // Autoscroll al fondo cuando llega/envío un mensaje.
   useEffect(() => {

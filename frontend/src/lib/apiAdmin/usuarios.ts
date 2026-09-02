@@ -106,6 +106,30 @@ export const usuariosApi = {
   },
 
   /**
+   * Levanta el bloqueo por intentos fallidos SIN tocarle la contraseña.
+   *
+   * Resetear la clave también destraba, pero se la cambia y la obliga a elegir
+   * una nueva antes de poder entrar. Esto hace solo lo necesario: la persona
+   * vuelve con la contraseña que ya sabe.
+   *
+   * Es idempotente: sobre una cuenta que no estaba bloqueada devuelve 200 con
+   * `estaba_bloqueada: false` (y limpia el contador de intentos igual).
+   *
+   * Real: POST /users/{usuarioId}/desbloquear
+   */
+  async desbloquearUsuario(usuarioId: string): Promise<{
+    usuario_id: string;
+    username: string;
+    bloqueado: boolean;
+    estaba_bloqueada: boolean;
+  }> {
+    return await realFetch(
+      `/users/${encodeURIComponent(usuarioId)}/desbloquear`,
+      { method: 'POST' },
+    );
+  },
+
+  /**
    * Da de baja lógica (soft-delete) a un usuario (admin_sistema) — C-61.
    * Real: DELETE /users/{usuarioId} → 204 sin cuerpo.
    */

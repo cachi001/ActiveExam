@@ -36,6 +36,17 @@ export interface UsuarioAdmin {
   password_generada?: string | null;
   creado_en?: string | null;
   ultimo_acceso_en?: string | null;
+  /**
+   * Bloqueo por intentos fallidos de login (solo en el detalle, GET /users/{id}).
+   * `bloqueado` es derivado en el servidor: la fila conserva la fecha del último
+   * bloqueo aunque ya haya vencido, así que mirar `bloqueado_hasta` no alcanza.
+   */
+  bloqueado?: boolean;
+  bloqueado_hasta?: string | null;
+  /** Segundos que faltan para el desbloqueo automático, para contar en pantalla. */
+  bloqueo_segundos_restantes?: number | null;
+  /** Se sigue informando con el bloqueo vencido: el contador no se limpia solo. */
+  intentos_fallidos?: number;
   /** Solo presente en el detalle (GET /users/{id}) para usuarios con rol estudiante. */
   inscripciones?: InscripcionResumen[];
   /** Solo presente en el detalle (GET /users/{id}) para usuarios con rol tutor: comisiones a cargo. */

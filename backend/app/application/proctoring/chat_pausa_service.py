@@ -19,7 +19,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.events.schema import Severidad, TipoEvento
@@ -201,25 +201,51 @@ async def cancelar_solicitudes_de_sesion(db: AsyncSession, session_id: str) -> i
 
 async def listar_pausas_pendientes(
     db: AsyncSession,
-) -> list[tuple[PausaAutorizadaModel, str | None]]:
+) -> list[tuple[PausaAutorizadaModel, str | None, str | None]]:
     """Lista las pausas 'solicitada' de TODAS las sesiones (poll del proctor).
 
     Antes de listar, EXPIRA las vencidas por timeout (C-72 seccion 12): las que el
     proctor no respondio a tiempo salen de la cola. Devuelve tuplas (pausa,
-    etiqueta_de_la_sesion) ordenadas por solicitada_en asc (las mas antiguas
-    primero — la cola del proctor las resuelve por antiguedad)."""
+    etiqueta_de_la_sesion, nombre_del_alumno) ordenadas por solicitada_en asc (las
+    mas antiguas primero — la cola del proctor las resuelve por antiguedad)."""
     await expirar_solicitudes_vencidas(db)
+    # El nombre del alumno se resuelve SERVER-SIDE contra `usuario`, igual que en
+    # el panel en vivo. Antes solo viajaba la `etiqueta` de la sesion, que la manda
+    # el cliente: el tutor leia "Parcial 1 - Programacion III pide una pausa" en
+    # vez del nombre, y con varias solicitudes a la vez no habia forma de saber a
+    # quien le estaba autorizando salir del examen. LEFT JOIN: una sesion sin
+    # usuario que matchee sigue apareciendo en la cola, con el nombre en NULL.
+    from app.infrastructure.persistence.models.transactional import UsuarioModel
+
+    nombre_completo = func.trim(
+        func.concat(
+            func.coalesce(UsuarioModel.nombre, ""),
+            " ",
+            func.coalesce(UsuarioModel.apellido, ""),
+        )
+    )
     stmt = (
-        select(PausaAutorizadaModel, ProctoringSessionModel.etiqueta)
+        select(
+            PausaAutorizadaModel,
+            ProctoringSessionModel.etiqueta,
+            func.nullif(nombre_completo, "").label("alumno_nombre"),
+        )
         .join(
             ProctoringSessionModel,
             ProctoringSessionModel.id == PausaAutorizadaModel.session_id,
+        )
+        .outerjoin(
+            UsuarioModel,
+            or_(
+                UsuarioModel.username == ProctoringSessionModel.alumno_idnumber,
+                UsuarioModel.email == ProctoringSessionModel.alumno_email,
+            ),
         )
         .where(PausaAutorizadaModel.estado == "solicitada")
         .order_by(PausaAutorizadaModel.solicitada_en.asc())
     )
     result = await db.execute(stmt)
-    return [(row[0], row[1]) for row in result.all()]
+    return [(row[0], row[1], row[2]) for row in result.all()]
 
 
 class EstadoInvalido(Exception):

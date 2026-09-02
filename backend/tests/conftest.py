@@ -105,11 +105,13 @@ def pytest_collection_modifyitems(
 # comporta como la de produccion.
 #   - audit_log: dos triggers (audit_log_encadenar / append-only). hash_self lo
 #     materializa el trigger; sin el, la cadena de hash tamper-evident no existe.
-#   - foto_referencia: tiene DOS variantes fisicas incompatibles (full = uri_storage
-#     + bucket contra MinIO; activeexam = foto_bytes BYTEA). El modelo del full y el del
-#     activeexam NO se pueden importar juntos (misma tabla, columnas distintas). Cual
-#     corresponde lo decide la migracion del entorno, no este hook.
-_TABLAS_QUE_NO_SE_RECREAN = frozenset({"audit_log", "foto_referencia"})
+# `foto_referencia` estuvo en esta lista mientras hubo dos variantes fisicas
+# incompatibles (full = uri_storage + bucket contra MinIO; activeexam = foto_bytes
+# BYTEA) y el modelo ORM describia la del full, que no existe en ninguna base
+# viva. Ya no: el modelo describe la tabla que crea la migracion 0008, asi que
+# recrearla desde el ORM da la tabla correcta. Si vuelve MinIO, la ambiguedad
+# vuelve y esta tabla vuelve a la lista.
+_TABLAS_QUE_NO_SE_RECREAN = frozenset({"audit_log"})
 
 #: Copia EXACTA del seed de la migracion 0014 (mismos valores que DEFAULT_CONFIG).
 #: Idempotente por el ON CONFLICT: correrlo por modulo no pisa nada.

@@ -163,9 +163,8 @@ async def _perfil_completo(session, usuario_id: str, *, con_foto: bool = True) -
             FotoReferenciaModel(
                 id=str(uuid.uuid4()),
                 usuario_id=usuario_id,
-                uri_storage="test/foto.jpg",
+                foto_bytes=b"\x89PNG\r\n\x1a\n",
                 hash_sha256="f" * 64,
-                bucket="test-bucket",
                 vigente=True,
             )
         )

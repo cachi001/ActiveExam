@@ -47,7 +47,12 @@ export function IntegridadPanel({
 }: Props) {
   const umbral = getEffectiveConfig()?.umbral_cola_revision ?? examen?.umbral_score ?? UMBRAL_REVISION_MIN;
   const enRiesgo = score >= umbral;
-  const ultimosEventos = mostrarEventos ? eventos.slice(0, 4) : [];
+  // TODOS los eventos, no los últimos: el puntaje de arriba los suma a todos, así
+  // que mostrar solo un pedazo dejaba un total que no cerraba con la lista. Antes
+  // cortaba en 4 y ofrecía un "+N más" que no era clickeable: el resto no había
+  // forma de verlo. La lista scrollea (ver `lista-eventos-supervision`) para que
+  // una sesión con muchas señales no estire la pantalla del examen.
+  const eventosVisibles = mostrarEventos ? eventos : [];
 
   return (
     <Card className="space-y-sm h-full">
@@ -84,17 +89,24 @@ export function IntegridadPanel({
         </p>
       )}
 
-      <div className="space-y-xs">
-        {!mostrarEventos ? null : ultimosEventos.length === 0 ? (
+      <div
+        data-testid="lista-eventos-supervision"
+        className="space-y-xs max-h-64 overflow-y-auto"
+      >
+        {!mostrarEventos ? null : eventosVisibles.length === 0 ? (
           <p className="text-label-xs text-success flex items-center gap-xs">
             <Icon name="check_circle" className="text-[13px]" fill /> Sin incidencias · {eventCount} eventos
           </p>
-        ) : ultimosEventos.map((ev) => {
+        ) : eventosVisibles.map((ev) => {
           const card = SEV_CARD[ev.severidad] ?? SEV_CARD.baja;
           const ic = SEV_ICON[ev.severidad] ?? SEV_ICON.baja;
           const pts = pesoEvento(ev.tipo, ev.severidad as Severidad);
           return (
-            <div key={ev.id} className={`flex items-center gap-xs p-xs rounded-lg border ${card}`}>
+            <div
+              key={ev.id}
+              data-testid="evento-supervision"
+              className={`flex items-center gap-xs p-xs rounded-lg border ${card}`}
+            >
               <Icon name={ic.name} className={`${ic.cls} shrink-0 text-[14px]`} fill />
               <span className="text-label-xs text-on-surface flex-1 min-w-0 truncate">
                 {TIPO_EVENTO_LABEL[ev.tipo]}
@@ -106,11 +118,6 @@ export function IntegridadPanel({
             </div>
           );
         })}
-        {mostrarEventos && eventos.length > 4 && (
-          <p className="text-label-xs text-on-surface-variant text-right">
-            +{eventos.length - 4} más
-          </p>
-        )}
       </div>
     </Card>
   );

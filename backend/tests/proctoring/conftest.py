@@ -374,9 +374,9 @@ async def dar_perfil_completo(db, usuario_id: str = ALUMNO_DE_TEST) -> None:
     )
     await db.execute(
         _text(
-            "INSERT INTO foto_referencia (usuario_id, uri_storage, hash_sha256, bucket)"
-            " VALUES (:u, 'memoria://foto', 'h', 'test')"
+            "INSERT INTO foto_referencia (usuario_id, foto_bytes, hash_sha256)"
+            " VALUES (:u, :foto, 'h')"
         ),
-        {"u": usuario_id},
+        {"u": usuario_id, "foto": b"\x89PNG\r\n\x1a\n"},
     )
     await db.commit()
