@@ -131,11 +131,17 @@ class IdentidadMixin:
         no puede resolver identidades en cursos donde no da clase, porque el WS
         directamente no se lo permite.
 
-        Orden de resolucion: `idnumber` (clave institucional) y luego `email`. El legajo
-        gana porque dos personas pueden compartir un email (cuentas de catedra) pero no
-        un legajo. El email se compara en minuscula: Moodle los normaliza y el padron
-        puede no venir asi, y comparar sensible a mayusculas dejaba a un alumno sin nota
-        por como se escribio su direccion.
+        Orden de resolucion REAL (c-78, en el orden en que lo hace el codigo):
+        `moodle_userid` -> `username` -> `idnumber` -> `email`.
+
+        Manda el `moodle_userid` porque es la clave primaria del otro lado, exacta
+        y estable, y llega en cada launch LTI. `idnumber` quedo del diseño original
+        (clave institucional) pero en este campus los alumnos NO lo tienen cargado,
+        asi que esa comparacion no matchea nunca. `username` tampoco matchea cuando
+        lo que se pasa es el sintetico "lti:1:7", que no es el username de nadie en
+        Moodle. El email se compara en minuscula: Moodle los normaliza y el padron
+        puede no venir asi, y comparar sensible a mayusculas dejaba a un alumno sin
+        nota por como se escribio su direccion.
 
         Returns:
             El userid, o ``None`` si el alumno NO esta matriculado en el curso.
