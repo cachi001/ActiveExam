@@ -8,6 +8,7 @@ Sin auth (D7 — alcance demo). La session_factory y el db_dependency se
 inyectan desde el router padre para evitar acoplar este router a ActiveExamSettings.
 """
 
+import uuid as _uuid_mod
 from datetime import datetime
 from typing import Annotated
 
@@ -86,6 +87,23 @@ from app.presentation.api.v1.proctoring.sessions.schemas import (
 )
 
 _NIVELES_RIESGO_VALIDOS = frozenset({"bajo", "medio", "alto"})
+
+
+def _uuid_o_none(valor: str | None) -> str | None:
+    """El valor si es un UUID valido, si no None.
+
+    Las columnas de id son UUID: un valor malformado rompe el INSERT en la DB con
+    un 500. `subject` viene del token y no todos los emisores ponen ahi un id
+    nuestro, asi que se valida antes de persistirlo. Misma guarda que `_es_uuid`
+    en stats/resumen_service y en exam_content, por el mismo motivo.
+    """
+    if not valor:
+        return None
+    try:
+        _uuid_mod.UUID(valor)
+    except (ValueError, AttributeError, TypeError):
+        return None
+    return valor
 
 
 def _principal_es_dueno(
@@ -475,6 +493,18 @@ def create_sessions_router(
                 examen_contenido_id=body.examen_contenido_id,
                 alumno_idnumber=principal.username or None,
                 alumno_email=principal.email or None,
+                # El id del alumno estaba a mano y no se persistia: es el mismo
+                # `subject` que unas lineas arriba resuelve su perfil. Sin esto la
+                # sesion solo se podia atar a la persona por textos que cambian.
+                #
+                # Solo si es un UUID valido. `subject` viene del token y no todos
+                # los emisores ponen ahi un id nuestro: un valor malformado
+                # reventaria el INSERT contra una columna UUID y dejaria a alguien
+                # sin poder EMPEZAR el examen. Mismo criterio que la guarda
+                # `_es_uuid` que ya existe en el proyecto por este mismo motivo.
+                # Si no es UUID queda en NULL y la sesion se resuelve por texto,
+                # exactamente como antes.
+                alumno_usuario_id=_uuid_o_none(principal.subject),
                 # Solo cuando hay examen vinculado: sin él no hay nota ni
                 # resultados de los que haga falta excluirla.
                 es_prueba=bool(body.examen_contenido_id)

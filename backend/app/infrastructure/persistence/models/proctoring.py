@@ -112,6 +112,23 @@ class ProctoringSessionModel(Base):
         comment="Email del alumno (fallback de identidad). NULL = sin email.",
     )
 
+    # migración 0107: el alumno, referenciado por su id.
+    #
+    # Antes esta tabla lo identificaba SOLO con dos textos (el username y el
+    # correo) y joineaba por ahí. Los dos pueden cambiar — el username lo ELIGE la
+    # persona en su primer ingreso por el campus — y cuando cambian, el join se
+    # queda sin nada: el tutor deja de ver de quién es la sesión y la nota pierde
+    # el camino a Moodle. El id estaba disponible al crearla (`principal.subject`).
+    #
+    # SIN clave foránea, a propósito: con FK, un id que no resuelva haría FALLAR
+    # el INSERT que crea la sesión, o sea que un problema de identidad dejaría a
+    # alguien sin poder empezar a rendir. Sin FK, un id que no resuelve no joinea
+    # y se cae al texto, igual que antes. Los textos quedan como foto de quién era
+    # esa persona en ese momento.
+    alumno_usuario_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), nullable=True
+    )
+
     # migration 0102: el docente probando su propio examen. La marca la pone el
     # SERVIDOR segun el rol de quien crea la sesion, nunca el cliente (regla dura
     # #6): si viniera del body, un alumno pediria que su rendicion no cuente.

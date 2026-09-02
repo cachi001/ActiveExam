@@ -109,6 +109,7 @@ class ProctoringRepository:
         examen_contenido_id: str | None = None,
         alumno_idnumber: str | None = None,
         alumno_email: str | None = None,
+        alumno_usuario_id: str | None = None,
         config_snapshot: dict | None = None,
         es_prueba: bool = False,
     ) -> ProctoringSessionModel:
@@ -121,6 +122,11 @@ class ProctoringRepository:
         ``alumno_idnumber``/``alumno_email`` (C-69, migration 0033) persisten la
         identidad del alumno al CREAR la sesion (username del JWT). El
         enforcement de intentos cuenta sesiones finalizadas por (alumno, examen).
+
+        ``alumno_usuario_id`` (migration 0107) es la referencia ESTABLE: los dos
+        textos de arriba pueden cambiar (el username lo elige la persona en su
+        primer ingreso por el campus) y entonces el join contra `usuario` se queda
+        sin nada. Quedan igual, como foto de quien era en ese momento.
 
         ``config_snapshot`` (migration 0083): foto de umbral/pesos de scoring
         vigente al crear la sesion. None = no se pudo resolver la config al
@@ -136,6 +142,7 @@ class ProctoringRepository:
             examen_contenido_id=examen_contenido_id,
             alumno_idnumber=alumno_idnumber,
             alumno_email=alumno_email,
+            alumno_usuario_id=alumno_usuario_id,
             es_prueba=es_prueba,
             config_snapshot=config_snapshot,
         )
@@ -763,48 +770,78 @@ class ProctoringRepository:
     ) -> dict[str, str | None]:
         """Mapea ``session.id -> nombre completo del alumno`` (C-76 tarea 17).
 
-        Resuelto en UNA consulta por lote (no una query por sesion, que no
-        escalaria con la paginacion): junta los ``alumno_idnumber``/``alumno_email``
-        distintos del set y los matchea contra ``usuario.username``/``usuario.email``,
-        mismo criterio que ``nombre_alumno()`` (single) y ``resultados_query``.
-        None si la sesion no tiene identidad persistida o no matchea ningun usuario
-        (la UI cae al idnumber/email crudo).
+        Resuelto en LOTE (no una query por sesion, que no escalaria con la
+        paginacion) y por ID primero (migration 0107).
+
+        El id es la referencia estable. Los dos textos que la sesion guarda —
+        username y correo — pueden cambiar: el username lo ELIGE la persona en su
+        primer ingreso por el campus. Cuando cambian los dos, el match por texto
+        se queda sin nada y el tutor deja de ver de quien es la sesion. Se
+        conservan como respaldo para las sesiones anteriores a la migracion, que
+        no tienen el id.
+
+        None si no se puede resolver por ningun camino (la UI cae a la etiqueta).
         """
-        from app.infrastructure.persistence.models.transactional import UsuarioModel
-
-        idnumbers = {s.alumno_idnumber for s in sesiones if s.alumno_idnumber}
-        emails = {s.alumno_email for s in sesiones if s.alumno_email}
-        if not idnumbers and not emails:
-            return {}
-
         from sqlalchemy import or_
 
-        condiciones = []
-        if idnumbers:
-            condiciones.append(UsuarioModel.username.in_(idnumbers))
-        if emails:
-            condiciones.append(UsuarioModel.email.in_(emails))
+        from app.infrastructure.persistence.models.transactional import UsuarioModel
 
-        stmt = select(
-            UsuarioModel.username, UsuarioModel.email, UsuarioModel.nombre, UsuarioModel.apellido
-        ).where(or_(*condiciones))
-        rows = (await self._db.execute(stmt)).all()
+        def _completo(nombre: str | None, apellido: str | None) -> str:
+            return " ".join(p for p in (nombre, apellido) if p)
 
+        # --- Camino bueno: por id ------------------------------------------
+        ids = {s.alumno_usuario_id for s in sesiones if s.alumno_usuario_id}
+        por_id: dict[str, str] = {}
+        if ids:
+            filas = (
+                await self._db.execute(
+                    select(
+                        UsuarioModel.id, UsuarioModel.nombre, UsuarioModel.apellido
+                    ).where(UsuarioModel.id.in_(ids))
+                )
+            ).all()
+            for fila in filas:
+                completo = _completo(fila.nombre, fila.apellido)
+                if completo:
+                    por_id[str(fila.id)] = completo
+
+        # --- Respaldo: por texto, SOLO para las sesiones sin id -------------
+        sin_id = [s for s in sesiones if not s.alumno_usuario_id]
+        idnumbers = {s.alumno_idnumber for s in sin_id if s.alumno_idnumber}
+        emails = {s.alumno_email for s in sin_id if s.alumno_email}
         por_username: dict[str, str] = {}
         por_email: dict[str, str] = {}
-        for row in rows:
-            completo = " ".join(p for p in (row.nombre, row.apellido) if p)
-            if not completo:
-                continue
-            if row.username:
-                por_username[row.username] = completo
-            if row.email:
-                por_email[row.email] = completo
+        if idnumbers or emails:
+            condiciones = []
+            if idnumbers:
+                condiciones.append(UsuarioModel.username.in_(idnumbers))
+            if emails:
+                condiciones.append(UsuarioModel.email.in_(emails))
+            filas = (
+                await self._db.execute(
+                    select(
+                        UsuarioModel.username,
+                        UsuarioModel.email,
+                        UsuarioModel.nombre,
+                        UsuarioModel.apellido,
+                    ).where(or_(*condiciones))
+                )
+            ).all()
+            for fila in filas:
+                completo = _completo(fila.nombre, fila.apellido)
+                if not completo:
+                    continue
+                if fila.username:
+                    por_username[fila.username] = completo
+                if fila.email:
+                    por_email[fila.email] = completo
 
         resultado: dict[str, str | None] = {}
         for s in sesiones:
             nombre = None
-            if s.alumno_idnumber and s.alumno_idnumber in por_username:
+            if s.alumno_usuario_id and str(s.alumno_usuario_id) in por_id:
+                nombre = por_id[str(s.alumno_usuario_id)]
+            elif s.alumno_idnumber and s.alumno_idnumber in por_username:
                 nombre = por_username[s.alumno_idnumber]
             elif s.alumno_email and s.alumno_email in por_email:
                 nombre = por_email[s.alumno_email]
