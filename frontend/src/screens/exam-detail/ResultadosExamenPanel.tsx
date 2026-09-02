@@ -937,7 +937,11 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
               <AdminTable
                 columns={cols}
                 data={resultados}
-                keyExtractor={(r) => r.session_id}
+                // Los ausentes llegan sin `session_id` (cadena vacía): sin este
+                // fallback todos compartían la misma clave y React reutilizaba el
+                // DOM entre alumnos distintos, con el riesgo de que la selección o
+                // el spinner de una fila cayeran sobre el ausente equivocado.
+                keyExtractor={(r) => r.session_id || `alumno-${r.usuario_id ?? r.alumno_email}`}
                 isLoading={cargandoTabla}
                 tableMinWidth="820px"
                 anchoFijo

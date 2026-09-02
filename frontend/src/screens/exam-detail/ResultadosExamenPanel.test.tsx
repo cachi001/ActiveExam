@@ -147,3 +147,77 @@ describe('ResultadosExamenPanel — botón archivar (C-76 §14.8)', () => {
     );
   });
 });
+
+/**
+ * Los alumnos que NO rindieron llegan en el listado (nota 0, "No rindió") y vienen
+ * SIN `session_id`: el backend manda cadena vacía. Como la tabla usaba ese campo
+ * como clave de fila, TODOS los ausentes compartían la misma (`''`) y React
+ * avisaba "two children with the same key". Con claves repetidas React reutiliza
+ * el DOM entre filas distintas: la selección o el spinner de una fila pueden
+ * terminar sobre el alumno equivocado, y una fila puede omitirse al re-renderizar.
+ */
+describe('ResultadosExamenPanel — filas de alumnos que no rindieron', () => {
+  function unAusente(usuarioId: string, nombre: string): ResultadoExamen {
+    return unaFila({
+      session_id: '',
+      usuario_id: usuarioId,
+      alumno_nombre: nombre,
+      nota: 0,
+      estado_entrega: 'no_finalizada',
+    });
+  }
+
+  it('cada ausente tiene su propia clave de fila (React no avisa por claves repetidas)', async () => {
+    const errores = vi.spyOn(console, 'error').mockImplementation(() => {});
+    listarResultadosFn.mockResolvedValue({
+      items: [unAusente('u-1', 'Ana García'), unAusente('u-2', 'Beto Suárez')],
+      total: 2,
+      page: 1,
+      page_size: 5,
+    });
+
+    renderPanel();
+    await waitFor(() => screen.getByText('Ana García'));
+
+    const avisosDeClave = errores.mock.calls.filter((args) =>
+      String(args[0]).includes('same key'),
+    );
+    errores.mockRestore();
+    expect(avisosDeClave).toEqual([]);
+  });
+
+  it('triangulación: los dos ausentes se renderizan, no se pisa uno con el otro', async () => {
+    listarResultadosFn.mockResolvedValue({
+      items: [unAusente('u-1', 'Ana García'), unAusente('u-2', 'Beto Suárez')],
+      total: 2,
+      page: 1,
+      page_size: 5,
+    });
+
+    renderPanel();
+    await waitFor(() => screen.getByText('Ana García'));
+
+    expect(screen.getByText('Beto Suárez')).toBeTruthy();
+    expect(document.querySelectorAll('tbody tr')).toHaveLength(2);
+  });
+
+  it('con session_id la clave sigue siendo la sesión (no cambia lo que ya andaba)', async () => {
+    const errores = vi.spyOn(console, 'error').mockImplementation(() => {});
+    listarResultadosFn.mockResolvedValue({
+      items: [unaFila({ session_id: 'sess-1' }), unaFila({ session_id: 'sess-2', alumno_nombre: 'Beto Suárez' })],
+      total: 2,
+      page: 1,
+      page_size: 5,
+    });
+
+    renderPanel();
+    await waitFor(() => screen.getByText('Ana García'));
+
+    const avisosDeClave = errores.mock.calls.filter((args) =>
+      String(args[0]).includes('same key'),
+    );
+    errores.mockRestore();
+    expect(avisosDeClave).toEqual([]);
+    expect(document.querySelectorAll('tbody tr')).toHaveLength(2);
+  });
+});
