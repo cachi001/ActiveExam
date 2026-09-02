@@ -130,6 +130,13 @@ async def ctx() -> AsyncGenerator[dict, None]:
         await conn.run_sync(MateriaModel.__table__.create, checkfirst=True)
         await conn.run_sync(ComisionModel.__table__.create, checkfirst=True)
         await conn.run_sync(InscripcionModel.__table__.create, checkfirst=True)
+        # Faltaban las dos de biometría, aunque los modelos ya se importaban acá:
+        # TODA la clase TestBiometriaReferenciaEstado moría con "relation
+        # foto_referencia does not exist". Es decir, el endpoint de estado
+        # biométrico no tenía cobertura real, y por eso pasó inadvertido que
+        # `fecha_expiracion` llegaba siempre vacía a la pantalla.
+        await conn.run_sync(EmbeddingReferenciaModel.__table__.create, checkfirst=True)
+        await conn.run_sync(FotoReferenciaModel.__table__.create, checkfirst=True)
 
     # --- seed: admin + estudiante con IDs únicos por ejecución ---
     suffix = uuid.uuid4().hex[:8]
@@ -428,6 +435,80 @@ class TestBiometriaReferenciaEstado:
         assert data["tiene_referencia_vigente"] is True
         assert data["algoritmo"] == "face-api-128d"
         assert data["created_at"] is not None
+
+    # -----------------------------------------------------------------------
+    # Fecha de vencimiento (1/9/2026).
+    #
+    # El dueño vio "Fecha de vencimiento" VACIO en el detalle del usuario despues
+    # de que un alumno completara consentimiento + biometria. La causa: la columna
+    # `embedding_referencia.fecha_expiracion` no la escribe NADIE (queda NULL), y
+    # el endpoint la leia de ahi. La vigencia real existe, pero se DERIVA de
+    # `fecha_captura + BIOMETRIC_VALIDITY_MONTHS` en `_referencia_sigue_vigente`.
+    #
+    # O sea: la pantalla leia una columna muerta mientras la logica usaba otra
+    # cosa. Ademas el texto de consentimiento que el alumno acepta promete "vale
+    # 24 meses", asi que mostrar el campo en blanco contradice lo prometido.
+    #
+    # Se calcula en la respuesta en vez de persistir la columna: si se guardara,
+    # cambiar BIOMETRIC_VALIDITY_MONTHS dejaria las filas viejas con una fecha que
+    # ya no es la que usa la logica de vigencia. Una sola fuente: `fecha_captura`.
+    # -----------------------------------------------------------------------
+
+    async def test_la_fecha_de_vencimiento_viene_calculada(self, ctx):
+        """Con una referencia recien capturada, el vencimiento NO puede venir vacio."""
+        from datetime import UTC, datetime
+
+        async with ctx["factory"]() as session:
+            session.add(
+                EmbeddingReferenciaModel(
+                    usuario_id=ctx["est_uid"],
+                    embedding_cifrado="gAAAAAB_FAKE_CIPHERTEXT_FOR_TEST_ONLY",
+                    algoritmo="face-api-128d",
+                    vigente=True,
+                )
+            )
+            await session.commit()
+
+        c = ctx["client"]
+        resp = await c.get(
+            f"/api/v1/users/{ctx['est_uid']}/biometria/referencia/estado",
+            headers={"Authorization": f"Bearer {ctx['admin_token']}"},
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["fecha_expiracion"] is not None, "el campo llegaba vacio a la pantalla"
+        # 24 meses de vigencia: la referencia capturada hoy vence dentro de 2 anios.
+        assert data["fecha_expiracion"][:4] == str(datetime.now(UTC).year + 2)
+
+    async def test_una_referencia_vieja_vence_antes(self, ctx):
+        """Triangulación: el vencimiento sale de la captura, no es una constante."""
+        from datetime import UTC, datetime
+
+        async with ctx["factory"]() as session:
+            emb = EmbeddingReferenciaModel(
+                usuario_id=ctx["est_uid"],
+                embedding_cifrado="gAAAAAB_FAKE_CIPHERTEXT_FOR_TEST_ONLY",
+                algoritmo="face-api-128d",
+                vigente=True,
+            )
+            # Capturada hace un anio: le queda uno.
+            emb.fecha_captura = datetime.now(UTC).replace(
+                year=datetime.now(UTC).year - 1, month=1, day=15
+            )
+            session.add(emb)
+            await session.commit()
+
+        c = ctx["client"]
+        resp = await c.get(
+            f"/api/v1/users/{ctx['est_uid']}/biometria/referencia/estado",
+            headers={"Authorization": f"Bearer {ctx['admin_token']}"},
+        )
+
+        data = resp.json()
+        assert data["fecha_expiracion"] is not None
+        assert data["fecha_expiracion"][:4] == str(datetime.now(UTC).year + 1)
+        assert data["fecha_expiracion"][5:7] == "01"
 
     async def test_biometria_nunca_expone_embedding_cifrado(self, ctx):
         """GOBERNANZA CRITICA: el JSON de biometría NUNCA contiene embedding_cifrado."""

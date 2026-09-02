@@ -23,6 +23,7 @@ import { tieneCapacidad } from '../../lib/capabilities';
 import { FORM_VACIO, type FormState } from './components/UsuarioHelpers';
 import { hayCambios as calcularCambios } from './components/usuarioCambios';
 import { ResetearPasswordCard } from './components/ResetearPasswordCard';
+import { BloqueoCuentaCard } from './components/BloqueoCuentaCard';
 import { UsuarioFormPanel } from './components/UsuarioFormPanel';
 import type { UsuarioAdmin } from '../../lib/types';
 
@@ -186,6 +187,23 @@ export default function UsuarioEdit() {
             onCancelar={() => navigate(volverA)}
             hayCambios={calcularCambios(usuario, form)}
           />
+        )}
+
+        {/* Bloqueo por intentos fallidos: no se veia en NINGUNA pantalla, y la
+            unica forma de destrabar a alguien era resetearle la contrasena. */}
+        {!cargando && !errorCarga && usuario && (
+          <div className="mt-lg">
+            <BloqueoCuentaCard
+              usuario={usuario}
+              onDesbloqueado={() => {
+                if (!usuarioId) return;
+                api.obtenerDetalleUsuario(usuarioId).then(setUsuario).catch(() => {
+                  // El desbloqueo ya se hizo; si el refresco falla, la tarjeta
+                  // muestra el estado destrabado igual (lo lleva en su estado).
+                });
+              }}
+            />
+          </div>
         )}
 
         {/* Reseteo de contrasena: el endpoint existia desde c-78 pero NINGUNA
