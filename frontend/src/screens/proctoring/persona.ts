@@ -54,16 +54,28 @@ function normalizar(texto: string): string {
 }
 
 /**
+ * Correo de la persona, para desambiguar dos que se llamen parecido.
+ *
+ * Se usa el correo y NO ``alumno_idnumber``: ese campo es el *username*, y para
+ * quien entra desde el campus vale ``lti:1:7``, una clave interna que no se le
+ * muestra a nadie. Acá no se maneja legajo.
+ */
+export function correoPersona(s: SesionProctoringResumen): string | null {
+  return s.alumno_email?.trim() || null;
+}
+
+/**
  * ¿Esta sesión coincide con lo que el docente escribió en el buscador?
  *
- * Busca por nombre, legajo (`alumno_idnumber`, que es como el docente los llama)
- * y correo, más la etiqueta para las sesiones sin identidad resuelta. Sin texto,
- * entran todas.
+ * Busca por nombre y correo, más la etiqueta para las sesiones sin identidad
+ * resuelta. Sin texto, entran todas. NO busca por ``alumno_idnumber`` por lo
+ * mismo que no se muestra: es una clave interna, no un identificador que alguien
+ * vaya a tipear.
  */
 export function coincideBusqueda(s: SesionProctoringResumen, texto: string): boolean {
   const q = normalizar(texto.trim());
   if (!q) return true;
-  return [s.alumno_nombre, s.alumno_idnumber, s.alumno_email, s.etiqueta]
+  return [s.alumno_nombre, s.alumno_email, s.etiqueta]
     .filter((campo): campo is string => typeof campo === 'string' && campo.trim() !== '')
     .some((campo) => normalizar(campo).includes(q));
 }

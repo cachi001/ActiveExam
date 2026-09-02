@@ -24,7 +24,6 @@ import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { useAuth } from '../lib/authStore';
 import { api } from '../lib/api';
-import type { Materia, Comision } from '../lib/types';
 import { loadEffectiveConfig, getEffectiveConfig } from '../config/effectiveConfigCache';
 import type { SesionProctoringResumen } from '../lib/types';
 import { SesionVivoCard } from './proctoring/SesionVivoCard';
@@ -59,20 +58,11 @@ export default function Proctor() {
   // Identidad del proctor logueado → se registra como tutor_actor al resolver
   // una pausa (C-15). Email como subject estable; null si no hay sesión.
   const tutorActor = useAuth((s) => s.principal?.email ?? null);
-  const roles = useAuth((s) => s.principal?.roles ?? []);
-  // c-78 §11.3 (E-05): coordinador y profesor eligen QUÉ mirar (tienen varias
-  // materias/comisiones a cargo). El TUTOR no: su alcance ya está fijado a sus
-  // comisiones por el backend, así que un selector solo le ofrecería opciones
-  // que no cambian nada. El filtro es de VISTA — nunca amplía el alcance: el
-  // backend ya devolvió únicamente lo que la persona puede ver.
-  const puedeFiltrar = roles.some((r) => r === 'coordinador' || r === 'profesor' || r === 'admin_sistema');
 
   const [sesiones, setSesiones] = useState<SesionProctoringResumen[]>([]);
   const [cargaInicial, setCargaInicial] = useState(true);
   // Filtros de vista (c-78 §11.3). Borrador → aplicado, igual que el resto de
   // las pantallas de listado.
-  const [materias, setMaterias] = useState<Materia[]>([]);
-  const [comisiones, setComisiones] = useState<Comision[]>([]);
   const [borrMateria, setBorrMateria] = useState('');
   const [borrComision, setBorrComision] = useState('');
   const [borrExamen, setBorrExamen] = useState('');
@@ -130,20 +120,8 @@ export default function Proctor() {
     return () => clearInterval(id);
   }, [refrescar]);
 
-  // Catálogo de los selectores. Solo se pide si la persona puede filtrar: al
-  // tutor no le sirve y sería una llamada de más en cada entrada al panel.
+  // Al cambiar de materia, la comisión elegida deja de tener sentido.
   useEffect(() => {
-    if (!puedeFiltrar) return;
-    api.materiasDisponibles().then(setMaterias).catch(() => setMaterias([]));
-  }, [puedeFiltrar]);
-
-  useEffect(() => {
-    if (!borrMateria) {
-      setComisiones([]);
-      setBorrComision('');
-      return;
-    }
-    api.comisionesDeMateria(borrMateria).then(setComisiones).catch(() => setComisiones([]));
     setBorrComision('');
   }, [borrMateria]);
 
@@ -168,21 +146,44 @@ export default function Proctor() {
   // sobre los nombres resueltos server-side (materia_nombre/comision_nombre),
   // que son los mismos que alimentan el agrupado.
   const sesionesVisibles = useMemo(() => {
-    const nombreMateria = materias.find((m) => m.id === filtros.materia)?.nombre ?? '';
-    const nombreComision = comisiones.find((c) => c.id === filtros.comision)?.nombre ?? '';
     const textoExamen = filtros.examen.trim().toLowerCase();
     return sesiones.filter((s) => {
-      if (nombreMateria && s.materia_nombre !== nombreMateria) return false;
-      if (nombreComision && s.comision_nombre !== nombreComision) return false;
+      if (filtros.materia && s.materia_nombre !== filtros.materia) return false;
+      if (filtros.comision && s.comision_nombre !== filtros.comision) return false;
       if (textoExamen && !(s.examen_titulo ?? '').toLowerCase().includes(textoExamen)) {
         return false;
       }
-      // Buscador de PERSONA: aplica a todos los roles, incluido el tutor, que es
-      // el único que no tiene el panel de filtros y el que más lo necesita.
+      // Buscador de PERSONA: aplica a todos los roles.
       if (!coincideBusqueda(s, buscaPersona)) return false;
       return true;
     });
-  }, [sesiones, filtros, materias, comisiones, buscaPersona]);
+  }, [sesiones, filtros, buscaPersona]);
+
+  // Opciones de filtro derivadas de las sesiones que la persona REALMENTE ve (el
+  // backend ya las acotó por pertenencia). Antes salían de un catálogo pedido por
+  // API y solo se le mostraban al coordinador/profesor/admin, con lo cual el tutor
+  // con DOS comisiones no tenía forma de mirar una sola. Derivarlas de las sesiones
+  // arregla las dos cosas: el tutor las tiene, y nadie ve una opción que no le
+  // devolvería nada.
+  const opcionesMateria = useMemo(
+    () => [...new Set(sesiones.map((s) => s.materia_nombre).filter(Boolean))].sort() as string[],
+    [sesiones],
+  );
+  const opcionesComision = useMemo(
+    () =>
+      [
+        ...new Set(
+          sesiones
+            .filter((s) => !borrMateria || s.materia_nombre === borrMateria)
+            .map((s) => s.comision_nombre)
+            .filter(Boolean),
+        ),
+      ].sort() as string[],
+    [sesiones, borrMateria],
+  );
+  // Con una sola materia y una sola comisión no hay nada que elegir: el selector
+  // sería una caja con una única opción. Es el caso del tutor de una comisión.
+  const hayQueElegir = opcionesMateria.length > 1 || opcionesComision.length > 1;
 
   const { gruposExamen, diagnostico, otras } = useMemo(() => {
     const examen: SesionProctoringResumen[] = [];
@@ -267,7 +268,7 @@ export default function Proctor() {
               type="search"
               value={buscaPersona}
               onChange={(e) => setBuscaPersona(e.target.value)}
-              placeholder="Buscar persona por nombre, legajo o correo…"
+              placeholder="Buscar persona por nombre o correo…"
               aria-label="Buscar persona"
               className="w-full rounded-xl border border-outline-variant/60 bg-surface-container-lowest
                 pl-9 pr-md py-sm text-body-md text-on-surface
@@ -281,10 +282,13 @@ export default function Proctor() {
           )}
         </div>
 
-        {/* c-78 §11.3: filtros SOLO para coordinador/profesor/admin. El tutor no
-            los ve porque su alcance ya está fijado a sus comisiones — un selector
-            le ofrecería opciones que no cambian lo que puede mirar. */}
-        {puedeFiltrar && (
+        {/* El filtro se muestra a CUALQUIERA que tenga más de una materia o
+            comisión en pantalla, tutor incluido: con dos comisiones a cargo,
+            mirar una sola es exactamente lo que hace falta. Con una sola de cada
+            una no se muestra: sería una caja con una única opción.
+            Es filtro de VISTA: nunca amplía el alcance, el backend ya devolvió
+            solo lo que la persona puede ver. */}
+        {hayQueElegir && (
           <FiltrosPanel
             onAplicar={() =>
               setFiltros({
@@ -297,7 +301,6 @@ export default function Proctor() {
               setBorrMateria('');
               setBorrComision('');
               setBorrExamen('');
-              setComisiones([]);
               setFiltros({ materia: '', comision: '', examen: '' });
             }}
             hayFiltros={Boolean(borrMateria || borrComision || borrExamen)}
@@ -307,33 +310,36 @@ export default function Proctor() {
               borrExamen.trim() !== filtros.examen
             }
           >
-            <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
-              Materia
-              <select
-                value={borrMateria}
-                onChange={(e) => setBorrMateria(e.target.value)}
-                className="min-w-[180px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
-              >
-                <option value="">Todas las materias</option>
-                {materias.map((m) => (
-                  <option key={m.id} value={m.id}>{m.nombre}</option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
-              Comisión
-              <select
-                value={borrComision}
-                onChange={(e) => setBorrComision(e.target.value)}
-                disabled={!borrMateria || comisiones.length === 0}
-                className="min-w-[160px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none disabled:opacity-50"
-              >
-                <option value="">Todas las comisiones</option>
-                {comisiones.map((c) => (
-                  <option key={c.id} value={c.id}>{c.nombre}</option>
-                ))}
-              </select>
-            </label>
+            {opcionesMateria.length > 1 && (
+              <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
+                Materia
+                <select
+                  value={borrMateria}
+                  onChange={(e) => setBorrMateria(e.target.value)}
+                  className="min-w-[180px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
+                >
+                  <option value="">Todas las materias</option>
+                  {opcionesMateria.map((nombre) => (
+                    <option key={nombre} value={nombre}>{nombre}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {opcionesComision.length > 1 && (
+              <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
+                Comisión
+                <select
+                  value={borrComision}
+                  onChange={(e) => setBorrComision(e.target.value)}
+                  className="min-w-[160px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
+                >
+                  <option value="">Todas las comisiones</option>
+                  {opcionesComision.map((nombre) => (
+                    <option key={nombre} value={nombre}>{nombre}</option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
               Examen
               <input

@@ -7,7 +7,13 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { SesionProctoringResumen } from '../../lib/types';
-import { coincideBusqueda, inicialDe, nombrePersona, SIN_IDENTIFICAR } from './persona';
+import {
+  coincideBusqueda,
+  correoPersona,
+  inicialDe,
+  nombrePersona,
+  SIN_IDENTIFICAR,
+} from './persona';
 
 function sesion(extra: Partial<SesionProctoringResumen> = {}): SesionProctoringResumen {
   return {
@@ -56,6 +62,17 @@ describe('inicialDe', () => {
   });
 });
 
+describe('correoPersona', () => {
+  it('devuelve el correo cuando lo hay', () => {
+    expect(correoPersona(sesion({ alumno_email: 'ada@uni.edu' }))).toBe('ada@uni.edu');
+  });
+
+  it('sin correo devuelve null, y NUNCA el username interno', () => {
+    // Un `lti:1:7` en pantalla no le dice nada a nadie y es una clave interna.
+    expect(correoPersona(sesion({ alumno_idnumber: 'lti:1:7' }))).toBeNull();
+  });
+});
+
 describe('coincideBusqueda', () => {
   const ada = sesion({
     alumno_nombre: 'Ada Lovelace',
@@ -74,8 +91,10 @@ describe('coincideBusqueda', () => {
     expect(coincideBusqueda(ada, 'ADA')).toBe(true);
   });
 
-  it('busca por legajo, que es como los llama el docente', () => {
-    expect(coincideBusqueda(ada, '4523')).toBe(true);
+  it('NO busca por el username interno', () => {
+    // `alumno_idnumber` es el username, y para quien entra por el campus vale
+    // "lti:1:7". Acá no se maneja legajo: nadie va a tipear eso.
+    expect(coincideBusqueda(ada, '45231')).toBe(false);
   });
 
   it('busca por correo', () => {

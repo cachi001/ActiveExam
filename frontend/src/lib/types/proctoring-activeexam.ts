@@ -248,7 +248,10 @@ export interface Pausa {
 export interface PausaPendiente {
   id: string;
   session_id: string;
+  /** Etiqueta de la sesión, que la manda el cliente. Solo fallback. */
   etiqueta?: string | null;
+  /** Quién pide la pausa, resuelto server-side contra `usuario`. */
+  alumno_nombre?: string | null;
   motivo: string;
   solicitada_en: string; // ISO 8601
 }

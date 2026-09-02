@@ -42,7 +42,8 @@ describe('ExamenVivoGroup', () => {
         sesiones={[
           sesion({
             alumno_nombre: 'Ada Lovelace',
-            alumno_idnumber: '45231',
+            alumno_email: 'ada@uni.edu',
+            alumno_idnumber: 'lti:1:7',
             etiqueta: 'Parcial 1 — Programación III',
           }),
         ]}
@@ -51,8 +52,11 @@ describe('ExamenVivoGroup', () => {
     );
 
     expect(screen.getByText('Ada Lovelace')).toBeTruthy();
-    // El legajo desambigua homónimos, que en una comisión pasan.
-    expect(screen.getByText(/45231/)).toBeTruthy();
+    // El correo desambigua homónimos, que en una comisión pasan.
+    expect(screen.getByText(/ada@uni\.edu/)).toBeTruthy();
+    // Y el username interno NO se muestra: para quien entra por el campus es
+    // "lti:1:7" y no le dice nada a nadie.
+    expect(screen.queryByText(/lti:1:7/)).toBeNull();
   });
 
   it('dos personas distintas se ven distintas aunque compartan etiqueta', () => {

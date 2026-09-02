@@ -27,7 +27,7 @@ import {
   INNER_CHIP_BG,
 } from './proctoring/helpers';
 import { examInfoDeSesion, subtituloExamen } from './proctoring/colaAgregacion';
-import { coincideBusqueda, inicialDe, nombrePersona } from './proctoring/persona';
+import { coincideBusqueda, correoPersona, inicialDe, nombrePersona } from './proctoring/persona';
 
 const POLL_MS = 4000;
 const DETALLE_ROUTE = '/admin/proctoring-session-detail';
@@ -173,7 +173,7 @@ export default function ExamenPersonasGrid() {
                   type="search"
                   value={busqueda}
                   onChange={(e) => setBusqueda(e.target.value)}
-                  placeholder="Buscar por nombre, legajo o correo…"
+                  placeholder="Buscar por nombre o correo…"
                   aria-label="Buscar persona"
                   className="w-full rounded-xl border border-outline-variant/60 bg-surface-container-lowest
                     pl-9 pr-md py-sm text-body-md text-on-surface
@@ -246,8 +246,9 @@ function PersonaCard({
               {nombre}
             </p>
             <p className="text-label-sm text-on-surface-variant truncate">
-              {/* El legajo desambigua homónimos, que en una comisión pasan. */}
-              {sesion.alumno_idnumber ? `${sesion.alumno_idnumber} · ` : ''}
+              {/* Correo, NO `alumno_idnumber`: ese es el username, y para quien
+                  entra por el campus vale "lti:1:7". Acá no se maneja legajo. */}
+              {correoPersona(sesion) ? `${correoPersona(sesion)} · ` : ''}
               {formatFechaRelativa(sesion.creada_en)}
             </p>
           </div>

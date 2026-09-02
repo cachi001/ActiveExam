@@ -84,7 +84,12 @@ class PausaPendiente(BaseModel):
 
     id: str
     session_id: str
+    #: Etiqueta de la sesion, que la manda el CLIENTE. Queda como fallback: la
+    #: identidad de verdad es `alumno_nombre`, resuelta contra `usuario`.
     etiqueta: str | None = None
+    #: Nombre de quien pide la pausa, resuelto SERVER-SIDE. None si la sesion no
+    #: matchea ningun usuario (la pantalla cae a la etiqueta).
+    alumno_nombre: str | None = None
     motivo: str
     solicitada_en: Any
 

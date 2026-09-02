@@ -61,11 +61,6 @@ export function SesionVivoCard({
             <h3 className="font-headline text-title-lg text-on-surface tracking-tight truncate">
               {nombrePersona(sesion)}
             </h3>
-            {sesion.alumno_idnumber && (
-              <span className="text-label-sm text-on-surface-variant tabular-nums">
-                {sesion.alumno_idnumber}
-              </span>
-            )}
             <Badge tone={modoBadgeTone(sesion.modo)}>{modoLabel(sesion.modo)}</Badge>
             {/* Un ensayo del docente no es un alumno rindiendo: sin esto el tutor
                 persigue un fantasma en pleno examen. */}

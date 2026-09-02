@@ -131,3 +131,31 @@ async def test_un_alumno_que_no_esta_en_la_base_no_inventa_nombre(client, db_ses
     fila = await _resumen(client, sid)
 
     assert fila["alumno_nombre"] is None
+
+
+async def test_la_cola_de_pausas_dice_quien_la_pide(client, db_session):
+    """Mismo defecto, segundo lugar: la cola de pausas mostraba la etiqueta.
+
+    El tutor leía "Parcial 1 — Programación III pide una pausa" en vez del nombre
+    de quien la pidió. Con varias personas pidiendo a la vez, no hay forma de
+    saber a quién le está autorizando salir del examen.
+    """
+    username = f"marie-{uuid.uuid4().hex[:8]}"
+    await _crear_usuario(db_session, username=username, nombre="Marie", apellido="Curie")
+    sid = await _sesion_de(client, username=username, etiqueta="Parcial 1")
+
+    pedir = await client.post(
+        f"/api/v1/proctoring/sessions/{sid}/pausas",
+        json={"motivo": "Necesito un vaso de agua"},
+        headers=auth_headers(
+            ["estudiante"], username=username, email=f"{username}@uni.edu"
+        ),
+    )
+    assert pedir.status_code == 201, pedir.text
+
+    resp = await client.get("/api/v1/proctoring/pausas/pendientes", headers=_ADMIN)
+    assert resp.status_code == 200, resp.text
+    fila = next((p for p in resp.json() if p["session_id"] == sid), None)
+    assert fila is not None, "la pausa recién pedida no aparece en la cola"
+
+    assert fila["alumno_nombre"] == "Marie Curie"

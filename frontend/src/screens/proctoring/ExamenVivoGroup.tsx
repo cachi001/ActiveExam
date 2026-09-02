@@ -14,7 +14,7 @@
 import { useState } from 'react';
 import { Icon } from '../../ui/components';
 import type { SesionProctoringResumen } from '../../lib/types';
-import { nombrePersona } from './persona';
+import { correoPersona, nombrePersona } from './persona';
 import {
   formatFechaRelativa,
   scoreSoftBg,
@@ -181,7 +181,9 @@ function PersonaVivoRow({
             {nombrePersona(sesion)}
           </p>
           <p className="text-label-sm text-on-surface-variant truncate">
-            {sesion.alumno_idnumber ? `${sesion.alumno_idnumber} · ` : ''}
+            {/* Correo, no `alumno_idnumber`: ese es el username, y para quien
+                entra por el campus vale "lti:1:7". Acá no se maneja legajo. */}
+            {correoPersona(sesion) ? `${correoPersona(sesion)} · ` : ''}
             {formatFechaRelativa(sesion.creada_en)}
             {sesion.es_prueba && (
               <span className="text-warning font-semibold"> · Prueba</span>
