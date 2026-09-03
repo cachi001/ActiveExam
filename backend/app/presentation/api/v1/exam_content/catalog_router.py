@@ -5901,12 +5901,23 @@ def create_exam_content_router(
         }
 
     async def _seleccion_bloqueada(session, examen_id: str) -> bool:
-        """True si el examen ya tiene >= 1 intento FINALIZADO.
+        """True si el examen ya tiene >= 1 intento REAL finalizado.
 
-        Regla de negocio (política elegida): la selección de preguntas se puede
-        editar libremente hasta que un alumno finaliza un intento; a partir de ahí
-        queda CONGELADA. Cambiarla después alteraría retroactivamente la nota —
-        grade_calculator cuenta solo las preguntas seleccionadas (opción B).
+        Regla de negocio (política elegida): la selección de preguntas y los campos
+        de mecánica/nota se pueden editar libremente hasta que un alumno finaliza un
+        intento; a partir de ahí quedan CONGELADOS. Cambiarlos después alteraría
+        retroactivamente la nota — grade_calculator cuenta solo las preguntas
+        seleccionadas (opción B).
+
+        Los ENSAYOS no cuentan (`es_prueba`). Contarlos hacía que probar el examen
+        lo congelara: el docente ensayaba, finalizaba, y ya no podía ajustarle el
+        tiempo límite ni la nota — lo contrario de para qué está el modo prueba, que
+        existe para ensayar SIN ensuciar nada (no cuenta como intento, no genera
+        nota, no va a Moodle y se puede borrar).
+
+        Verificado contra el sistema el 2/9/2026, y delatado por una inconsistencia:
+        el contador de intentos del sorteo ya excluía los ensayos y este no. Dos
+        partes del sistema contaban distinto lo mismo.
         """
         from sqlalchemy import select as _select
 
@@ -5919,6 +5930,7 @@ def create_exam_content_router(
             .where(
                 ProctoringSessionModel.examen_contenido_id == examen_id,
                 ProctoringSessionModel.finalizada_en.isnot(None),
+                ProctoringSessionModel.es_prueba.is_(False),
             )
             .limit(1)
         )
