@@ -7,6 +7,11 @@ destino Moodle y sincronización manual de resultados. Requiere roles de gestió
 
 from __future__ import annotations
 
+# `_uuid` se importaba SOLO dentro de algunas funciones, pero `_titulo_de_copia`
+# (nivel de módulo) lo usa en su última rama: duplicar un examen que ya tuviera
+# 998 copias tiraba NameError en vez de devolver un título. Lo detecta
+# test_c78_materia_response_con_responsables (nombres que no resuelven).
+import uuid as _uuid
 from dataclasses import asdict
 from datetime import UTC, datetime
 
