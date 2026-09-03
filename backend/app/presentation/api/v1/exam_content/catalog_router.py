@@ -5369,6 +5369,151 @@ def create_exam_content_router(
             "creada_en": cat.creada_en.isoformat() if cat.creada_en else None,
         }
 
+    def _texto_aviso_categoria(nombre: str, total: int, rendidos: int) -> str | None:
+        """El aviso que se le muestra al docente, o None si no hay nada que avisar.
+
+        Lo arma el backend y no la pantalla: es la misma frase para el modal de
+        renombrar, el de dar de baja y cualquier cliente de la API, y describe una
+        regla del dominio (qué se toca y qué no), no una decoración de la UI.
+        """
+        if total == 0:
+            return None
+        examenes = "1 examen" if total == 1 else f"{total} exámenes"
+        if rendidos == 0:
+            return (
+                f"«{nombre}» se usa en {examenes}, ninguno rendido todavía. Cambiarla "
+                "no toca las preguntas que ya se copiaron a esos exámenes."
+            )
+        ya = "1 ya se rindió" if rendidos == 1 else f"{rendidos} ya se rindieron"
+        return (
+            f"«{nombre}» se usa en {examenes} y {ya}. Cambiarla NO modifica ninguna "
+            "nota ni saca preguntas de esos exámenes, pero el registro de dónde salió "
+            "cada pregunta va a mostrar el nombre nuevo."
+        )
+
+    async def _uso_de_la_rama(session, categoria_id: str, nombre: str) -> dict:
+        """En qué exámenes se usó la categoría (y su rama) y cuáles ya se rindieron.
+
+        Un examen queda atado a una categoría por DOS caminos distintos, y mirar
+        uno solo dejaría la mitad de los casos sin avisar:
+
+        - ``pregunta_examen.categoria_id``: la pregunta ya copiada al examen, con
+          la categoría de la que vino.
+        - ``tramo_sorteo_examen.categoria_id``: la regla del sorteo por intento,
+          donde las preguntas se resuelven recién cuando arranca cada alumno.
+
+        Cuenta la RAMA entera porque la baja arrastra las subcategorías: avisar
+        solo por el padre contaría distinto de lo que después se da de baja.
+
+        ``rendido`` excluye los ENSAYOS, igual que el candado de config: el ensayo
+        del docente no es una rendición y no puede pesar como si lo fuera.
+        """
+        from sqlalchemy import select as _select
+
+        from app.infrastructure.persistence.models.exam_content import (
+            ExamenContenidoModel,
+            PreguntaExamenModel,
+            TramoSorteoExamenModel,
+        )
+        from app.infrastructure.persistence.models.proctoring import (
+            ProctoringSessionModel,
+        )
+        from app.infrastructure.persistence.repositories.categoria_pregunta import (
+            CategoriaPreguntaSqlRepository,
+        )
+
+        rama = await CategoriaPreguntaSqlRepository(session).ids_de_la_rama(categoria_id)
+        ids: set[str] = set()
+        for modelo in (PreguntaExamenModel, TramoSorteoExamenModel):
+            filas = await session.execute(
+                _select(modelo.examen_id).where(modelo.categoria_id.in_(rama))
+            )
+            ids.update(str(x) for x in filas.scalars())
+
+        examenes: list[dict] = []
+        rendidos = 0
+        if ids:
+            titulos = await session.execute(
+                _select(ExamenContenidoModel.id, ExamenContenidoModel.titulo)
+                .where(ExamenContenidoModel.id.in_(ids))
+                .order_by(ExamenContenidoModel.titulo)
+            )
+            con_rendicion = await session.execute(
+                _select(ProctoringSessionModel.examen_contenido_id).where(
+                    ProctoringSessionModel.examen_contenido_id.in_(ids),
+                    ProctoringSessionModel.finalizada_en.isnot(None),
+                    ProctoringSessionModel.es_prueba.is_(False),
+                )
+            )
+            rendidos_ids = {str(x) for x in con_rendicion.scalars()}
+            for examen_id, titulo in titulos:
+                rendido = str(examen_id) in rendidos_ids
+                rendidos += 1 if rendido else 0
+                examenes.append(
+                    {"examen_id": str(examen_id), "titulo": titulo, "rendido": rendido}
+                )
+
+        return {
+            "categoria_id": str(categoria_id),
+            "nombre": nombre,
+            "rama": [str(c) for c in rama],
+            "examenes": examenes,
+            "total_examenes": len(examenes),
+            "examenes_rendidos": rendidos,
+            "aviso": _texto_aviso_categoria(nombre, len(examenes), rendidos),
+        }
+
+    @router.get(
+        "/categorias/{categoria_id}/uso",
+        dependencies=[Depends(require_capability("gestionar_banco"))],
+        summary="En qué exámenes se usó la categoría (aviso previo a editarla o darla de baja)",
+    )
+    async def uso_de_categoria_banco(
+        categoria_id: str,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ):
+        """Para AVISAR antes de renombrar o dar de baja, no para bloquear.
+
+        Renombrar o dar de baja una categoría no cambia ninguna nota: las
+        preguntas del examen están copiadas (`pregunta_examen`) y la baja es
+        lógica. Lo que se degrada es la trazabilidad de un examen ya rendido, que
+        empieza a mostrar el nombre nuevo o una categoría fuera del árbol. Por eso
+        esto informa y la decisión queda en el docente.
+        """
+        if session_factory is None:
+            raise HTTPException(status_code=500, detail="Persistencia no inicializada.")
+        from uuid import UUID as _UUID
+
+        from app.infrastructure.persistence.models.exam_content import (
+            CategoriaPreguntaModel,
+        )
+
+        # Las columnas de id son UUID: un valor malformado revienta el cast en la
+        # DB y devuelve un 500 donde corresponde un 404 limpio.
+        try:
+            _UUID(categoria_id)
+        except (ValueError, AttributeError, TypeError):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": "categoria_no_encontrada",
+                    "mensaje": "La categoría no existe.",
+                },
+            ) from None
+
+        async with session_factory() as session:
+            fila = await session.get(CategoriaPreguntaModel, categoria_id)
+            if fila is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "error": "categoria_no_encontrada",
+                        "mensaje": "La categoría no existe.",
+                    },
+                )
+            await _exigir_pertenencia_materia(principal, str(fila.materia_id))
+            return await _uso_de_la_rama(session, categoria_id, fila.nombre)
+
     @router.patch(
         "/categorias/{categoria_id}",
         dependencies=[Depends(require_capability("gestionar_banco"))],
@@ -5377,6 +5522,7 @@ def create_exam_content_router(
     async def editar_categoria_banco(
         categoria_id: str,
         body: dict,
+        request: Request,
         principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ):
         # Dos acciones combinables: renombrar (nombre) y/o re-anidar
@@ -5405,6 +5551,10 @@ def create_exam_content_router(
             if cat is None:
                 raise HTTPException(status_code=404, detail="categoria_no_encontrada")
             await _exigir_pertenencia_materia(principal, cat.materia_id)
+            nombre_anterior = cat.nombre
+            # El aviso se calcula ANTES de tocar nada: describe lo que el docente
+            # está por cambiar, con el nombre que la categoría tiene todavía.
+            uso = await _uso_de_la_rama(session, categoria_id, nombre_anterior)
             if nombre:
                 await session.execute(
                     _update(CategoriaPreguntaModel)
@@ -5436,11 +5586,39 @@ def create_exam_content_router(
                     ) from exc
             await session.commit()
             cat_act = await repo.obtener(categoria_id)
+
+        # Trazabilidad: el examen guarda el ID de la categoría, no su nombre, así
+        # que el nombre viejo solo sobrevive si queda acá. Sin esto, el aviso de
+        # arriba no alcanza: se avisa y el rastro se pierde igual.
+        if nombre and nombre != nombre_anterior:
+            detalle = f"Renombró la categoría «{nombre_anterior}» a «{cat_act.nombre}»."
+        else:
+            detalle = f"Editó la categoría «{cat_act.nombre}»."
+        if reanidar:
+            detalle += f" Nuevo padre: {cat_act.categoria_padre_id or 'raíz'}."
+        if uso["aviso"]:
+            detalle += f" {uso['aviso']}"
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.CATEGORIA_BANCO_EDICION,
+            modulo=ModuloAuditoria.EXAMENES,
+            entidad=EntidadAuditoria.EXAMEN,
+            entidad_id=str(categoria_id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=detalle,
+        )
         return {
             "id": cat_act.id,
             "nombre": cat_act.nombre,
             "materia_id": cat_act.materia_id,
             "categoria_padre_id": cat_act.categoria_padre_id,
+            # Aviso, no candado: la edición ya se hizo. Sirve para que la pantalla
+            # le diga al docente qué exámenes quedaron afectados.
+            "aviso": uso["aviso"],
+            "examenes_afectados": uso["total_examenes"],
+            "examenes_rendidos": uso["examenes_rendidos"],
         }
 
     @router.delete(
@@ -5485,6 +5663,9 @@ def create_exam_content_router(
                 )
             await _exigir_pertenencia_materia(principal, str(fila.materia_id))
             nombre = fila.nombre
+            # Antes de la baja: después la rama sigue existiendo, pero el aviso se
+            # arma con el estado que el docente tenía delante al confirmar.
+            uso = await _uso_de_la_rama(session, categoria_id, nombre)
             afectadas = await CategoriaPreguntaSqlRepository(session).dar_de_baja(
                 categoria_id, datetime.now(UTC)
             )
@@ -5502,6 +5683,7 @@ def create_exam_content_router(
             proposito=(
                 f"Dio de baja la categoría «{nombre}» y su rama "
                 f"({len(afectadas)} en total). Nada se borró: se puede reactivar."
+                + (f" {uso['aviso']}" if uso["aviso"] else "")
             ),
         )
 

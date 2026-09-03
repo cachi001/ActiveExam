@@ -124,6 +124,11 @@ class AccionAuditoria(StrEnum):
     # nada que auditar: no quedaba rastro de qué se había perdido.
     CATEGORIA_BANCO_BAJA = "categoria_banco.baja"
     CATEGORIA_BANCO_REACTIVAR = "categoria_banco.reactivar"
+    # Renombrar o re-anidar una categoría. Se audita por trazabilidad: el nombre
+    # de la categoría es lo que explica de dónde salió cada pregunta de un examen
+    # ya rendido, y el examen guarda el id, no el nombre. Si nadie registra cómo
+    # se llamaba antes, ese rastro se pierde sin dejar huella.
+    CATEGORIA_BANCO_EDICION = "categoria_banco.edicion"
     # c-78 D9: publicar las notas es una accion explicita y de IDA. Queda
     # auditada por si despues hay reclamo sobre cuando se vieron las notas.
     EXAMEN_PUBLICAR_NOTAS = "examen.publicar_notas"

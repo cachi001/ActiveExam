@@ -62,8 +62,11 @@ class CategoriaPreguntaSqlRepository:
         row = await self._session.get(CategoriaPreguntaModel, categoria_id)
         return self._row_to_entity(row) if row else None
 
-    async def _ids_de_la_rama(self, categoria_id: str) -> list[str]:
+    async def ids_de_la_rama(self, categoria_id: str) -> list[str]:
         """La categoría y TODOS sus descendientes.
+
+        Pública porque el aviso de uso mira la misma rama que la baja: avisar por
+        el padre y dar de baja la rama entera contarían distinto lo mismo.
 
         La baja tiene que alcanzar a la rama entera: si solo se marcara el padre,
         sus subcategorías quedarían colgando de una categoría invisible y el árbol
@@ -96,7 +99,7 @@ class CategoriaPreguntaSqlRepository:
         subcategorías y el SET NULL mandaba las preguntas a "Sin clasificar",
         perdiendo la organización del banco sin posibilidad de deshacerlo.
         """
-        ids = await self._ids_de_la_rama(categoria_id)
+        ids = await self.ids_de_la_rama(categoria_id)
         if not ids:
             return []
         await self._session.execute(
@@ -108,7 +111,7 @@ class CategoriaPreguntaSqlRepository:
 
     async def reactivar(self, categoria_id: str) -> list[str]:
         """Devuelve al árbol la categoría y su rama. Devuelve los ids afectados."""
-        ids = await self._ids_de_la_rama(categoria_id)
+        ids = await self.ids_de_la_rama(categoria_id)
         if not ids:
             return []
         await self._session.execute(
