@@ -55,11 +55,14 @@ pytestmark = pytest.mark.asyncio
 
 _BASE = "/api/v1/proctoring"
 
-# Dos alumnos DISTINTOS (username = preferred_username del JWT) + un coordinador
-# (alcance institucional, sin restricción de pertenencia por comisión).
+# Dos alumnos DISTINTOS (username = preferred_username del JWT), un coordinador y
+# un admin. Desde c-79 el coordinador NO es institucional: está acotado a SUS
+# materias. El alcance institucional, que es el que no se puede romper al cerrar
+# el IDOR, hoy lo tiene admin_sistema.
 _OWNER = auth_headers(["estudiante"], username="alumno-owner", email="owner@uni.edu")
 _ATACANTE = auth_headers(["estudiante"], username="alumno-atacante", email="atk@uni.edu")
 _COORDINADOR = auth_headers(["coordinador"], username="coord-1", email="coord@uni.edu")
+_ADMIN = auth_headers(["admin_sistema"], username="admin-1", email="admin@uni.edu")
 
 _DROP = [
     "mensaje_chat",
@@ -306,21 +309,34 @@ async def test_dueno_lee_su_propio_chat_200(client: AsyncClient) -> None:
     assert resp.json() == []
 
 
-async def test_coordinador_supervision_institucional_no_se_rompe(client: AsyncClient) -> None:
-    """No regresión: un rol de alcance institucional (coordinador) sigue pudiendo
-    leer el chat y postear como 'tutor' — la supervisión en vivo real no se rompe
-    al cerrar el IDOR."""
+async def test_supervision_institucional_no_se_rompe(client: AsyncClient) -> None:
+    """No regresión: el rol de alcance institucional sigue pudiendo leer el chat y
+    postear como 'tutor'. La supervisión en vivo real no se rompe al cerrar el IDOR."""
     sid = await _crear_sesion(client, _OWNER)
     resp = await client.post(
         f"{_BASE}/sessions/{sid}/chat",
         json={"autor": "tutor", "texto": "hola desde coordinación"},
-        headers=_COORDINADOR,
+        headers=_ADMIN,
     )
     assert resp.status_code == 201, resp.text
 
-    leer = await client.get(f"{_BASE}/sessions/{sid}/chat", headers=_COORDINADOR)
+    leer = await client.get(f"{_BASE}/sessions/{sid}/chat", headers=_ADMIN)
     assert leer.status_code == 200, leer.text
     assert len(leer.json()) == 1
+
+
+async def test_coordinador_fuera_de_sus_materias_no_entra_al_chat(
+    client: AsyncClient,
+) -> None:
+    """c-79: el coordinador dejó de ser institucional. Sobre una sesión que no
+    cuelga de sus materias es tan ajeno como cualquiera, y recibe 403."""
+    sid = await _crear_sesion(client, _OWNER)
+    resp = await client.post(
+        f"{_BASE}/sessions/{sid}/chat",
+        json={"autor": "tutor", "texto": "hola"},
+        headers=_COORDINADOR,
+    )
+    assert resp.status_code == 403, resp.text
 
 
 # ---------------------------------------------------------------------------

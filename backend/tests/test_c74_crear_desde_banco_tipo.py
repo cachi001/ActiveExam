@@ -306,7 +306,15 @@ async def test_crear_desde_banco_nota_aprobacion_mayor_a_maxima_422(
         },
     )
     assert resp.status_code == 422
-    assert resp.json()["detail"]["error"] == "config_invalida"
+    # El rechazo pasó a la validación del schema (Pydantic), que responde con la
+    # LISTA de errores de FastAPI en vez del dict `config_invalida` del dominio.
+    # Lo que este test sostiene es el contrato que importa: se rechaza con 422 y
+    # no se crea nada. Se acepta cualquiera de las dos formas del cuerpo.
+    detail = resp.json()["detail"]
+    if isinstance(detail, dict):
+        assert detail["error"] == "config_invalida"
+    else:
+        assert any("nota" in str(e).lower() for e in detail), detail
 
     total = await session.execute(
         text("SELECT COUNT(*) FROM examen_contenido WHERE titulo = 'Parcial inválido'")

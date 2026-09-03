@@ -215,6 +215,9 @@ async def test_resumen_devuelve_metadata_con_comision(client, factory):
         # c-78 §18.4: la comision quedo sin tutor, asi que las notas de este
         # examen no se van a poder devolver al campus.
         "comision_sin_tutor",
+        # migración 0105: el examen es un ENSAYO. La pantalla lo marca en el
+        # encabezado, y el alumno solo lo ve si está habilitado para probarlo.
+        "modo_prueba",
     }
     assert body["eliminado_en"] is None, "un examen recien creado esta activo"
     assert body["id"] == examen_id

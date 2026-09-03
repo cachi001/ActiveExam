@@ -54,6 +54,12 @@ _TABLES_TO_CREATE = [
     ProctoringSessionModel.__table__,
 ]
 
+# Solo campos que el PATCH acepta. `mezclar_preguntas` NO va: desde la migración
+# 0046 es siempre true y el schema lo rechaza con 422 (`extra_forbidden`), esté el
+# examen rendido o no. Mandarlo hacía fallar todos los PATCH de este módulo, y de
+# paso rompía `test_rendido_acortar_cierre_409`: como el primer PATCH se caía con
+# 422, el examen nunca quedaba con `cierre`, así que acortarlo después no apretaba
+# nada y respondía 200 en vez de 409.
 _CONFIG_VALIDA = {
     "tiempo_limite_min": 60,
     "intentos_permitidos": 2,
@@ -61,7 +67,6 @@ _CONFIG_VALIDA = {
     "cierre": "2026-12-31T20:00:00+00:00",
     "nota_maxima": 10.0,
     "nota_aprobacion": 6.0,
-    "mezclar_preguntas": False,
 }
 
 

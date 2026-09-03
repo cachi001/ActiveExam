@@ -8,7 +8,27 @@ WORM esta disponible: exige las 4 variables juntas o ninguna, para no arrancar
 
 from __future__ import annotations
 
+import os
+
+import pytest
+
 from app.config_activeexam import ActiveExamSettings, minio_configurado
+
+
+@pytest.fixture(autouse=True)
+def _sin_minio_en_el_entorno(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Aisla el test del entorno donde corre.
+
+    ``ActiveExamSettings`` es pydantic-settings: lo que no se le pasa lo LEE del
+    entorno. Dentro del contenedor de desarrollo las cuatro MINIO_* están
+    definidas, así que "sin ninguna variable MinIO" era mentira y el módulo
+    entero fallaba, incluidos los casos "a medias" (heredaban las claves reales).
+    El test describe una configuración, no la máquina: se limpia el entorno.
+    """
+    for nombre in list(os.environ):
+        if nombre.upper().startswith("MINIO_"):
+            monkeypatch.delenv(nombre, raising=False)
+
 
 _BASE_ENV_VARS = {
     "database_url": "postgresql+asyncpg://u:p@localhost:5432/db",
