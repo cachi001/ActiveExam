@@ -13,10 +13,13 @@ dominio nunca depende de FastAPI y los tests inyectan un validador propio.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Iterable
+from dataclasses import replace
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import text as sa_text
 
 from app.domain.auth import authorization
 from app.domain.auth.errors import (
@@ -25,7 +28,8 @@ from app.domain.auth.errors import (
     UnauthenticatedError,
 )
 from app.domain.auth.identity import AuthenticatedPrincipal
-from app.domain.auth.roles import Rol
+from app.domain.auth.roles import Rol, parse_rol
+from app.infrastructure.auth.estado_cuenta import CACHE_ESTADO_CUENTA, EstadoCuenta
 from app.infrastructure.auth.jwt_validator import JwtValidator
 
 # auto_error=False: gestionamos el 401 nosotros para devolver el WWW-Authenticate
@@ -109,7 +113,92 @@ async def get_current_principal(
             },
         )
 
-    return principal
+    return await _con_estado_vigente(request, principal)
+
+
+def _es_uuid(valor: str | None) -> bool:
+    """El ``sub`` solo se usa como id de usuario si de verdad es un UUID.
+
+    Un subject que no lo es (otro emisor, un token de servicio) reventaría la
+    consulta con un DataError de asyncpg. Mismo patrón que el resto del proyecto.
+    """
+    if not valor:
+        return False
+    try:
+        uuid.UUID(str(valor))
+    except (ValueError, AttributeError, TypeError):
+        return False
+    return True
+
+
+async def _con_estado_vigente(
+    request: Request, principal: AuthenticatedPrincipal
+) -> AuthenticatedPrincipal:
+    """Contrasta el token contra la BASE: baja y roles vigentes.
+
+    El token dura 15 minutos y lleva los roles adentro. Sin esto, dar de baja a
+    alguien o quitarle un rol no surtía efecto hasta que su token venciera.
+
+    Dos decisiones deliberadas:
+
+    - **Solo se rechaza ante evidencia POSITIVA de revocación** (la fila existe y
+      tiene ``eliminado_en``). Si no hay fila que mirar, no hay nada que afirmar:
+      el token está firmado y es válido, y no todo emisor usa el id local como
+      subject. Inventar un 401 ahí cerraría caminos legítimos sin ganar nada.
+    - **Si la consulta falla, se deja pasar.** Es una verificación EXTRA sobre un
+      token que ya fue validado criptográficamente; que un hipo de la base saque a
+      una comisión entera de su examen sería un remedio peor que la enfermedad.
+    """
+    session_factory = getattr(request.app.state, "session_factory", None)
+    if session_factory is None or not _es_uuid(principal.subject):
+        return principal
+
+    usuario_id = str(principal.subject)
+
+    async def _cargar() -> EstadoCuenta | None:
+        async with session_factory() as session:
+            fila = (
+                await session.execute(
+                    sa_text(
+                        "SELECT eliminado_en, roles FROM usuario WHERE id = :id"
+                    ),
+                    {"id": usuario_id},
+                )
+            ).first()
+        if fila is None:
+            return None
+        eliminado_en, roles = fila
+        return EstadoCuenta(
+            activa=eliminado_en is None,
+            roles=tuple(roles or ()),
+        )
+
+    try:
+        estado = await CACHE_ESTADO_CUENTA.obtener(usuario_id, _cargar)
+    except Exception:  # noqa: BLE001 — ver docstring: se deja pasar.
+        return principal
+
+    if estado is None:
+        return principal
+    if not estado.activa:
+        raise _unauthorized("La cuenta fue dada de baja.")
+
+    # La base manda sobre el token: un rol quitado hace efecto ya, sin esperar los
+    # 15 minutos. Se reemplazan SIEMPRE (no solo al quitar): si le agregaron un rol
+    # tampoco tiene por qué esperar.
+    #
+    # SALVO que la fila no tenga roles cargados. Una lista vacía no es "le quitaron
+    # todo": es un dato ausente, y dejar sin permisos a alguien por eso es inventar
+    # una revocación que nadie decidió. Mismo criterio que el `sub` sin fila.
+    if not estado.roles:
+        return principal
+
+    roles_vigentes = tuple(
+        r for r in (parse_rol(nombre) for nombre in estado.roles) if r is not None
+    )
+    if roles_vigentes == principal.roles:
+        return principal
+    return replace(principal, roles=roles_vigentes)
 
 
 def require_roles(*roles: Rol):

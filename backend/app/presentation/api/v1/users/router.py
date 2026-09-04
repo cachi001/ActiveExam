@@ -16,6 +16,7 @@ Reglas duras:
 
 from __future__ import annotations
 
+import os
 import secrets
 import string
 from datetime import UTC, datetime
@@ -29,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.application.audit.acciones import AccionAuditoria, EntidadAuditoria, ModuloAuditoria, TipoAccionAuditoria
 from app.domain.auth.roles import Rol
+from app.infrastructure.auth.estado_cuenta import CACHE_ESTADO_CUENTA
 from app.infrastructure.auth.hashing import hashear_password_async
 from app.infrastructure.persistence.models.comision_tutor import ComisionTutorModel
 from app.infrastructure.persistence.models.exam_content import ComisionModel, MateriaModel
@@ -48,6 +50,50 @@ from app.presentation.api.v1.auth.dependencies import require_roles
 router = APIRouter()
 
 _require_admin = require_roles(Rol.ADMIN_SISTEMA)
+
+#: Username de la cuenta admin RAÍZ (la del seed). Configurable por entorno para
+#: instalaciones que la hayan renombrado.
+_ADMIN_PROTEGIDO_DEFAULT = "admin"
+
+
+def _username_protegido() -> str:
+    """Se lee en cada llamada, no al importar: los tests la cambian por entorno."""
+    return (
+        os.environ.get("ADMIN_PROTEGIDO_USERNAME", _ADMIN_PROTEGIDO_DEFAULT)
+        .strip()
+        .lower()
+    )
+
+
+def _es_cuenta_raiz(usuario: UsuarioModel) -> bool:
+    return (usuario.username or "").strip().lower() == _username_protegido()
+
+
+def _proteger_cuenta_raiz(
+    usuario: UsuarioModel, principal: AuthenticatedPrincipal, que_intenta: str
+) -> None:
+    """Blinda la cuenta admin raíz contra los caminos que equivalen a TOMARLA.
+
+    ``admin_sistema`` es un rol plano: sin esto, cualquier admin puede quitarle el
+    rol al dueño del sistema, quedarse con su usuario o su correo, resetearle la
+    contraseña o darlo de baja. Con dos administradores, cada uno puede desalojar
+    al otro, y el dueño no tiene una posición distinta de la de un ayudante.
+
+    La cuenta raíz sigue administrándose A SÍ MISMA sin restricción, y lo que no
+    es una toma de cuenta (corregirle el nombre, desbloquearla) sigue permitido
+    para cualquier admin: esto es un blindaje puntual, no un candado.
+    """
+    if not _es_cuenta_raiz(usuario):
+        return
+    if str(usuario.id) == str(principal.subject):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail=(
+            f"No podés {que_intenta} la cuenta de administración principal. "
+            "Solo ella misma puede hacerlo."
+        ),
+    )
 
 #: Largo mínimo de un username editado a mano. No es una regla de seguridad (la
 #: contraseña es la que protege): es para que no quede una credencial de un
@@ -605,6 +651,15 @@ async def editar_usuario(
                 detail="Usuario no encontrado.",
             )
 
+        # La cuenta raíz solo cambia sus roles y su credencial de ingreso por sí
+        # misma. Corregirle el nombre o el apellido sigue siendo de cualquier admin.
+        if body.roles is not None:
+            _proteger_cuenta_raiz(usuario, principal, "cambiarle los roles a")
+        if body.username is not None and body.username != usuario.username:
+            _proteger_cuenta_raiz(usuario, principal, "cambiarle el usuario a")
+        if body.email is not None and body.email != usuario.email:
+            _proteger_cuenta_raiz(usuario, principal, "cambiarle el correo a")
+
         # Anti-lockout: el admin no puede quitarse a si mismo el rol admin_sistema.
         if body.roles is not None:
             es_el_mismo = str(usuario.id) == str(principal.subject)
@@ -687,7 +742,9 @@ async def editar_usuario(
                 detail="Ya existe un usuario con ese email o username.",
             ) from exc
 
-    from app.application.audit.service import registrar_seguro
+    # El guard cachea el estado de la cuenta por unos segundos; sin esto, un rol
+    # recién quitado seguiría vigente hasta que venza el TTL.
+    CACHE_ESTADO_CUENTA.invalidar(str(usuario.id))
 
     from app.application.audit.service import registrar_seguro
 
@@ -816,6 +873,8 @@ async def eliminar_usuario(
                 detail="Usuario no encontrado o ya dado de baja.",
             )
 
+        _proteger_cuenta_raiz(usuario, principal, "dar de baja")
+
         # Soft-delete via SQL directo (evita conflicto de tipos datetime/str en asyncpg).
         # El ORM mapea la columna como str | None pero asyncpg espera un datetime; usar
         # text() con TIMESTAMPTZ bypasea el problema de coercion y pasa el timestamp
@@ -838,6 +897,10 @@ async def eliminar_usuario(
 
         await session.commit()
         usuario_email = usuario.email
+
+    # Que la baja se sienta YA en este worker: sin esto, el guard seguiría viendo
+    # la cuenta activa hasta que venza el TTL del cache.
+    CACHE_ESTADO_CUENTA.invalidar(str(usuario_id))
 
     from app.application.audit.service import registrar_seguro
 
@@ -910,6 +973,10 @@ async def reactivar_usuario(
         )
         await session.commit()
         await session.refresh(usuario)
+
+    # Reactivar también tiene que sentirse ya: la persona vuelve a entrar sin
+    # esperar a que el cache olvide que estaba de baja.
+    CACHE_ESTADO_CUENTA.invalidar(str(usuario_id))
 
     from app.application.audit.service import registrar_seguro
 
@@ -1271,6 +1338,9 @@ async def resetear_password(
                     "quiere entrar directo, tiene que fijar la suya desde su perfil."
                 ),
             )
+        # Resetear la contraseña de la cuenta raíz es, literalmente, tomarla: el
+        # que resetea recibe la clave temporal en la respuesta.
+        _proteger_cuenta_raiz(usuario, principal, "resetearle la contraseña a")
 
         usuario.password_hash = password_hash
         usuario.debe_cambiar_password = True
