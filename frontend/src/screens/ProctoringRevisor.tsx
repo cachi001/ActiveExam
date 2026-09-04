@@ -511,7 +511,7 @@ export default function ProctoringRevisor() {
             <input
               type="text"
               value={borrQ}
-              placeholder="Nombre, legajo o email…"
+              placeholder="Nombre, usuario o correo…"
               onChange={(e) => setBorrQ(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') aplicarFiltros(); }}
               className="min-w-[220px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
