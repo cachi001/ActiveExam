@@ -140,8 +140,8 @@ export function AlumnoPickerModal({
           <input
             ref={inputRef}
             type="search"
-            aria-label="Buscar estudiante por nombre, email o legajo"
-            placeholder="Buscar por nombre, email o legajo… (Enter)"
+            aria-label="Buscar estudiante por nombre, correo o usuario"
+            placeholder="Buscar por nombre, correo o usuario… (Enter)"
             value={qInput}
             onChange={(e) => {
               const v = e.target.value;

@@ -114,16 +114,24 @@ def test_token_invalido_devuelve_401(client: TestClient) -> None:
     assert resp.status_code == 401
 
 
-def test_refresh_rota_y_rechaza_reuso(client: TestClient) -> None:
-    store = client.app.state.refresh_store
-    original = store.issue()
-    ok = client.post("/api/v1/auth/refresh", json={"refresh_token": original})
-    assert ok.status_code == 200
-    nuevo = ok.json()["refresh_token"]
-    assert nuevo != original
-    # Reuso del refresh ya rotado -> 401.
-    reuso = client.post("/api/v1/auth/refresh", json={"refresh_token": original})
-    assert reuso.status_code == 401
+def test_refresh_desconocido_da_401(client: TestClient) -> None:
+    """Borde HTTP: un refresh que el store no reconoce -> 401.
+
+    Este test emitía el token en `app.state.refresh_store` (el store EN MEMORIA) y
+    esperaba un 200. Con provider 'jwt' (hoy el único valor posible) y una DB
+    disponible, el endpoint resuelve contra `DbRefreshTokenStore`, así que ese
+    token no existía para él y la respuesta correcta era 401: el test describía un
+    camino que la aplicación ya no toma.
+
+    La rotación y el rechazo del reuso se prueban donde vive el store que el
+    endpoint usa: `test_c55_db_refresh_store.py::test_issue_is_valid_rotate_reuso`
+    y `test_auth_refresh_and_realtime.py`. Acá se fija el mapeo HTTP, que es de lo
+    que trata este módulo.
+    """
+    resp = client.post(
+        "/api/v1/auth/refresh", json={"refresh_token": "token-que-no-existe"}
+    )
+    assert resp.status_code == 401
 
 
 def test_me_devuelve_principal(client: TestClient) -> None:

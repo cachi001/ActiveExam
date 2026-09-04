@@ -29,6 +29,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.proctoring import event_service
+from app.application.proctoring.integridad import sha256_hex
 from app.application.proctoring.reinferencia import ResultadoReinferencia
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.infrastructure.persistence.models.proctoring import ProctoringSessionModel
@@ -129,7 +130,14 @@ async def test_sin_worm_storage_persiste_solo_en_postgres(db_session: AsyncSessi
         worm_storage=None,
     )
 
-    assert evento.screenshot_b64 == _PNG_1X1_B64
+    # c-78 (16.4): la captura se guarda en BINARIO (`screenshot_bin`), no como
+    # base64: la misma imagen pasó de 151.224 a 85.065 bytes. `screenshot_b64`
+    # quedó SOLO para leer el histórico y las filas nuevas ya no la usan, así que
+    # comparar contra ella daba None. Lo que este test tiene que sostener es que
+    # la evidencia quedó en Postgres, y eso lo prueban el binario y su hash (que
+    # se verifica contra el base64 original, sin depender del cifrado at-rest).
+    assert evento.screenshot_bin is not None
+    assert evento.screenshot_sha256 == sha256_hex(_PNG_1X1_B64)
     assert evento.worm_object_key is None
     assert evento.worm_uri is None
     assert evento.worm_retain_until is None
@@ -178,7 +186,14 @@ async def test_fallo_de_deposit_no_tumba_la_ingesta(db_session: AsyncSession) ->
     )
 
     # El evento SE PERSISTIO igual — la evidencia en DB es la red de seguridad.
-    assert evento.screenshot_b64 == _PNG_1X1_B64
+    # c-78 (16.4): la captura se guarda en BINARIO (`screenshot_bin`), no como
+    # base64: la misma imagen pasó de 151.224 a 85.065 bytes. `screenshot_b64`
+    # quedó SOLO para leer el histórico y las filas nuevas ya no la usan, así que
+    # comparar contra ella daba None. Lo que este test tiene que sostener es que
+    # la evidencia quedó en Postgres, y eso lo prueban el binario y su hash (que
+    # se verifica contra el base64 original, sin depender del cifrado at-rest).
+    assert evento.screenshot_bin is not None
+    assert evento.screenshot_sha256 == sha256_hex(_PNG_1X1_B64)
     assert evento.worm_object_key is None
     assert evento.worm_uri is None
     assert evento.worm_retain_until is None

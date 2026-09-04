@@ -105,6 +105,13 @@ const ACCIONES_POR_MODULO: Record<string, OpcionAccion[]> = {
       label: 'Baja/reactivación de categoría del banco',
       accion: 'categoria_banco.baja,categoria_banco.reactivar',
     },
+    {
+      // Renombrar o re-anidar. Se audita porque el examen guarda el ID de la
+      // categoría, no su nombre: sin esta entrada no queda cómo se llamaba
+      // cuando se armó un examen que ya se rindió.
+      label: 'Edición de categoría del banco',
+      accion: 'categoria_banco.edicion',
+    },
   ],
   MOODLE: [
     { label: 'Sincronizar nota', accion: 'moodle.sync' },
@@ -440,7 +447,7 @@ export default function Auditoria() {
             <input
               type="text"
               value={borrador.actor ?? ''}
-              placeholder="Email o legajo institucional"
+              placeholder="Correo de la persona"
               onChange={(e) => setCampo({ actor: e.target.value || undefined })}
               className="min-w-[180px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-surface-500 focus:outline-none"
             />

@@ -320,9 +320,13 @@ async def test_obtener_respuestas_restaura_lo_ya_guardado(
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["session_id"] == sid
-    assert body["respuestas"] == [
-        {"pregunta_id": pregunta_id, "opcion_elegida_id": opcion_id}
-    ]
+    # Por campo y no por dict entero: la respuesta creció con `respuesta_cloze`
+    # (preguntas de completar) y un campo nuevo no puede romper un test que mira
+    # si lo contestado sobrevive al F5.
+    assert len(body["respuestas"]) == 1
+    guardada = body["respuestas"][0]
+    assert guardada["pregunta_id"] == pregunta_id
+    assert guardada["opcion_elegida_id"] == opcion_id
 
 
 async def test_obtener_respuestas_de_otro_alumno_404(client: AsyncClient, db: AsyncSession) -> None:

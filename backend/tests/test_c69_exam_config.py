@@ -678,7 +678,11 @@ async def test_resumen_expone_ventana_e_intentos(taking_app, factory):
         examen_id = examen.id
         await s.commit()
 
-    async with _student_client(taking_app) as c:
+    # Con cliente de STAFF, no de alumno: `puede_ver_el_resumen` no habilita a
+    # nadie sobre un examen SIN COMISIÓN (no hay padrón contra el cual comprobar
+    # la inscripción), así que el alumno recibe 404 a propósito. Lo que este test
+    # mira es que el resumen exponga la ventana y los intentos.
+    async with _admin_client(taking_app) as c:
         resp = await c.get(f"/api/v1/exam-content/{examen_id}/resumen")
     assert resp.status_code == 200, resp.text
     body = resp.json()

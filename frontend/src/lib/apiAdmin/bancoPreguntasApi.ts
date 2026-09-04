@@ -5,7 +5,8 @@
  *  GET  /api/v1/exam-content/categorias?materia_id=  → árbol de categorías
  *  POST /api/v1/exam-content/categorias               → crear categoría
  *  PATCH /api/v1/exam-content/categorias/:id          → renombrar categoría
- *  DELETE /api/v1/exam-content/categorias/:id         → borrar categoría
+ *  DELETE /api/v1/exam-content/categorias/:id         → dar de baja categoría
+ *  GET  /api/v1/exam-content/categorias/:id/uso       → en qué exámenes se usa (aviso previo)
  *  GET  /api/v1/exam-content/preguntas?materia_id=&categoria_id=  → listar preguntas del banco
  *  PATCH /api/v1/exam-content/preguntas/:id/categoria → mover pregunta a categoría
  */
@@ -91,10 +92,53 @@ export async function crearCategoria(payload: {
   return res.json();
 }
 
+/** Un examen que quedó atado a la categoría, y si ya se rindió de verdad. */
+export interface ExamenQueUsaLaCategoria {
+  examen_id: string;
+  titulo: string;
+  /** Con al menos una rendición REAL terminada. Los ensayos del docente no cuentan. */
+  rendido: boolean;
+}
+
+/**
+ * En qué exámenes se usa una categoría (y su rama). Sirve para AVISAR antes de
+ * renombrarla o darla de baja, nunca para bloquear: ninguna de esas dos cosas
+ * cambia una nota ni saca preguntas de un examen armado (las preguntas están
+ * copiadas en el examen). Lo que se degrada es la trazabilidad de un examen ya
+ * rendido, que pasa a mostrar el nombre nuevo.
+ */
+export interface UsoDeCategoria {
+  categoria_id: string;
+  nombre: string;
+  /** La categoría y sus subcategorías: la baja arrastra la rama entera. */
+  rama: string[];
+  examenes: ExamenQueUsaLaCategoria[];
+  total_examenes: number;
+  examenes_rendidos: number;
+  /** Texto ya redactado por el backend. null = no hay nada que avisar. */
+  aviso: string | null;
+}
+
+export async function usoDeCategoria(categoriaId: string): Promise<UsoDeCategoria> {
+  const res = await fetchAutenticado(
+    `${API_BASE}/exam-content/categorias/${encodeURIComponent(categoriaId)}/uso`,
+    { headers: headers() },
+  );
+  if (!res.ok) throw new Error(`Error ${res.status} al consultar el uso de la categoría`);
+  return res.json();
+}
+
+/** El PATCH devuelve además el aviso: qué exámenes quedaron afectados por el cambio. */
+export interface CategoriaEditada extends CategoriaPregunta {
+  aviso?: string | null;
+  examenes_afectados?: number;
+  examenes_rendidos?: number;
+}
+
 export async function renombrarCategoria(
   categoriaId: string,
   nombre: string,
-): Promise<CategoriaPregunta> {
+): Promise<CategoriaEditada> {
   const res = await fetchAutenticado(`${API_BASE}/exam-content/categorias/${encodeURIComponent(categoriaId)}`, {
     method: 'PATCH',
     headers: headers(),

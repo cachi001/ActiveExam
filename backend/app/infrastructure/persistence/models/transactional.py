@@ -87,6 +87,21 @@ class UsuarioModel(Base):
     email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True)
     roles: Mapped[list[str]] = mapped_column(JSONB, nullable=False, server_default="[]")
     attrs_federados: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    # migración 0106: identidad de Moodle, en columnas propias.
+    #
+    # `moodle_userid` es el `sub` del launch LTI. Vivía escondido dentro del
+    # username sintético (`lti:{deployment}:{sub}`), que la persona REEMPLAZA al
+    # elegir el suyo en el primer ingreso: ahí la identidad de Moodle se perdía y
+    # reconocer a quien vuelve pasaba a depender del CORREO, que no identifica a
+    # nadie (se cambia, y dos personas pueden compartirlo).
+    #
+    # `lti_deployment_id` acompaña porque el número solo es único DENTRO de un
+    # campus: dos Moodles distintos pueden tener ambos un usuario 7.
+    #
+    # NULL para las cuentas locales, y para las LTI anteriores a c-78 que además
+    # ya habían cambiado su username: esas se completan solas al próximo ingreso.
+    moodle_userid: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    lti_deployment_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # C-55: credencial local (nullable — usuarios federados no tienen password local).
     password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
     auth_provider: Mapped[str] = mapped_column(

@@ -93,14 +93,40 @@ class ProctoringSessionModel(Base):
     # enforcement server-side de intentos por examen necesita contar las sesiones
     # finalizadas de un alumno, por eso se persiste aca. NULLABLE: las sesiones de
     # prueba (modo 'test') o las creadas antes de esta migracion quedan con NULL.
-    # alumno_idnumber = principal.username (mismo criterio que el write-back).
+    # OJO CON EL NOMBRE: `alumno_idnumber` NO guarda un idnumber de Moodle.
+    # Guarda `principal.username`, que para quien entra por el campus vale
+    # "lti:{deployment_id}:{sub}". El nombre viene de Moodle, donde `idnumber` es
+    # el campo de la clave institucional, y quedó de un plan que el campus real no
+    # sostuvo: ahí los alumnos tienen `idnumber: None` (verificado en c-78).
+    #
+    # Acá NO se maneja legajo. Su uso real hoy es de clave de join contra
+    # `usuario.username` (write-back y conteo de intentos). Renombrarla a
+    # `alumno_username` es deuda pendiente: son 118 referencias y cae sobre el
+    # camino de la nota, así que no se toca en caliente.
     alumno_idnumber: Mapped[str | None] = mapped_column(
         String(255), nullable=True,
-        comment="username del alumno (legajo/padron). NULL = sin identidad.",
+        comment="username del alumno (NO es un idnumber de Moodle). NULL = sin identidad.",
     )
     alumno_email: Mapped[str | None] = mapped_column(
         String(255), nullable=True,
         comment="Email del alumno (fallback de identidad). NULL = sin email.",
+    )
+
+    # migración 0107: el alumno, referenciado por su id.
+    #
+    # Antes esta tabla lo identificaba SOLO con dos textos (el username y el
+    # correo) y joineaba por ahí. Los dos pueden cambiar — el username lo ELIGE la
+    # persona en su primer ingreso por el campus — y cuando cambian, el join se
+    # queda sin nada: el tutor deja de ver de quién es la sesión y la nota pierde
+    # el camino a Moodle. El id estaba disponible al crearla (`principal.subject`).
+    #
+    # SIN clave foránea, a propósito: con FK, un id que no resuelva haría FALLAR
+    # el INSERT que crea la sesión, o sea que un problema de identidad dejaría a
+    # alguien sin poder empezar a rendir. Sin FK, un id que no resuelve no joinea
+    # y se cae al texto, igual que antes. Los textos quedan como foto de quién era
+    # esa persona en ese momento.
+    alumno_usuario_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), nullable=True
     )
 
     # migration 0102: el docente probando su propio examen. La marca la pone el

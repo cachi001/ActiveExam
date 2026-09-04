@@ -16,7 +16,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.infrastructure.persistence.models.proctoring import ProctoringSessionModel
 from tests.proctoring.conftest import auth_headers
 
-_PROCTOR = auth_headers(["coordinador"])  # c-76: rol proctor eliminado -> coordinador supervisa
+# c-76 eliminó el rol proctor y el coordinador pasó a supervisar. c-79 lo ACOTÓ:
+# el coordinador solo alcanza las sesiones de SUS materias y el tutor las de SU
+# comisión, así que sobre una sesión sin comisión (las de estos tests) recibe un
+# 403 "sesion_ajena" correcto. El supervisor de alcance institucional hoy es
+# admin_sistema, y es el que corresponde acá: lo que estos tests miran es el
+# CONTENIDO del detalle, no el alcance (eso vive en test_rbac_guards).
+_PROCTOR = auth_headers(["admin_sistema"])
 
 pytestmark = pytest.mark.asyncio
 

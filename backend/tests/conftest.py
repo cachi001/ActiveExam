@@ -210,6 +210,46 @@ async def _reponer_fks(engine) -> None:
                 continue
 
 
+async def _agregar_columnas_faltantes(engine, existentes: set[str]) -> None:
+    """Agrega a las tablas que ya existen las columnas que el modelo declara y ellas no.
+
+    Sin esto, cada columna nueva que agrega una migracion deja a la base de test
+    con la tabla vieja hasta que alguien la dropea a mano, y los modulos fallan
+    con `UndefinedColumn` como si el codigo estuviera roto.
+    """
+    from sqlalchemy.schema import CreateColumn
+
+    from app.infrastructure.persistence.base import Base
+
+    async with engine.begin() as conn:
+        filas = await conn.exec_driver_sql(
+            "SELECT table_name, column_name FROM information_schema.columns"
+            " WHERE table_schema = 'public'"
+        )
+        por_tabla: dict[str, set[str]] = {}
+        for tabla, columna in filas:
+            por_tabla.setdefault(tabla, set()).add(columna)
+
+    for tabla in Base.metadata.sorted_tables:
+        if tabla.name not in existentes:
+            continue  # recien creada arriba: ya tiene todo
+        actuales = por_tabla.get(tabla.name, set())
+        for columna in tabla.columns:
+            if columna.name in actuales:
+                continue
+            # NOT NULL sin default no se puede agregar a una tabla con filas.
+            if not columna.nullable and columna.server_default is None:
+                continue
+            try:
+                ddl = CreateColumn(columna).compile(dialect=engine.dialect)
+                async with engine.begin() as conn:
+                    await conn.exec_driver_sql(
+                        f'ALTER TABLE "{tabla.name}" ADD COLUMN IF NOT EXISTS {ddl}'
+                    )
+            except Exception:
+                continue  # tipo que no aplica en esta DB de test
+
+
 @pytest.fixture(scope="module", autouse=True)
 def _esquema_completo_por_modulo() -> None:
     """Re-crea las tablas que falten antes de cada modulo (no-op sin DATABASE_URL)."""
@@ -265,6 +305,17 @@ def _esquema_completo_por_modulo() -> None:
                         await conn.run_sync(tabla.create, checkfirst=True)
                 except Exception:
                     continue  # ya existe o no aplica en esta DB de test
+
+            # Las tablas que YA existen no se tocan arriba (solo se crea lo que
+            # falta), asi que una columna AGREGADA por una migracion nueva es
+            # INVISIBLE para los tests: la base de test se queda con la tabla vieja
+            # y todo el modulo revienta con UndefinedColumn, como si el codigo
+            # estuviera mal. Paso a agregar las columnas que falten.
+            #
+            # Solo AGREGA, nunca dropea ni cambia tipos: el harness completa lo que
+            # falta, no migra. Y saltea las NOT NULL sin default, que no se pueden
+            # agregar a una tabla con filas — esas necesitan la migracion de verdad.
+            await _agregar_columnas_faltantes(engine, existentes)
 
             # Las FK NO vuelven con la tabla. `DROP TABLE usuario CASCADE` no se
             # lleva solo `usuario`: borra tambien las FK de las OTRAS tablas, las

@@ -63,14 +63,27 @@ async def _crear_usuario(db, *, username: str, nombre: str, apellido: str) -> st
     return uid
 
 
-async def _sesion_de(client: AsyncClient, *, username: str, etiqueta: str) -> str:
-    """Crea la sesión como la crea el alumno: la etiqueta la elige el cliente."""
+async def _sesion_de(
+    client: AsyncClient, *, username: str, etiqueta: str, usuario_id: str | None = None
+) -> str:
+    """Crea la sesión como la crea el alumno: la etiqueta la elige el cliente.
+
+    `usuario_id` va como `subject` del token, que es de donde el backend saca la
+    identidad real (migración 0107). Sin él, la sesión apuntaría a otro usuario y
+    el test estaría midiendo cualquier cosa.
+    """
+    cabeceras = auth_headers(
+        ["estudiante"], username=username, email=f"{username}@uni.edu"
+    ) if usuario_id is None else auth_headers(
+        ["estudiante"],
+        username=username,
+        email=f"{username}@uni.edu",
+        subject=usuario_id,
+    )
     resp = await client.post(
         "/api/v1/proctoring/sessions",
         json={"modo": "examen", "etiqueta": etiqueta},
-        headers=auth_headers(
-            ["estudiante"], username=username, email=f"{username}@uni.edu"
-        ),
+        headers=cabeceras,
     )
     assert resp.status_code == 201, resp.text
     return resp.json()["id"]
@@ -87,8 +100,12 @@ async def _resumen(client: AsyncClient, session_id: str) -> dict:
 async def test_el_panel_en_vivo_trae_el_nombre_del_alumno(client, db_session):
     """Sin esto el tutor no sabe a quién está mirando."""
     username = f"ada-{uuid.uuid4().hex[:8]}"
-    await _crear_usuario(db_session, username=username, nombre="Ada", apellido="Lovelace")
-    sid = await _sesion_de(client, username=username, etiqueta="Parcial 1")
+    uid = await _crear_usuario(
+        db_session, username=username, nombre="Ada", apellido="Lovelace"
+    )
+    sid = await _sesion_de(
+        client, username=username, etiqueta="Parcial 1", usuario_id=uid
+    )
 
     fila = await _resumen(client, sid)
 
@@ -105,8 +122,12 @@ async def test_la_identidad_sale_del_servidor_aunque_la_etiqueta_diga_otra_cosa(
     alguien podría hacerse pasar por otro en el panel del tutor.
     """
     username = f"grace-{uuid.uuid4().hex[:8]}"
-    await _crear_usuario(db_session, username=username, nombre="Grace", apellido="Hopper")
-    sid = await _sesion_de(client, username=username, etiqueta="Ada Lovelace")
+    uid = await _crear_usuario(
+        db_session, username=username, nombre="Grace", apellido="Hopper"
+    )
+    sid = await _sesion_de(
+        client, username=username, etiqueta="Ada Lovelace", usuario_id=uid
+    )
 
     fila = await _resumen(client, sid)
 
@@ -124,8 +145,14 @@ async def test_un_alumno_que_no_esta_en_la_base_no_inventa_nombre(client, db_ses
     Devolver null es correcto: la pantalla cae a la etiqueta y avisa que no pudo
     identificarlo, en vez de mostrar un nombre inventado.
     """
+    # Fantasma en las DOS dimensiones: ni el username ni el id existen en
+    # `usuario`. Con el subject por default apuntaría al alumno del fixture, que sí
+    # existe, y el test mediría otra cosa.
     sid = await _sesion_de(
-        client, username=f"fantasma-{uuid.uuid4().hex[:8]}", etiqueta="Sin registro"
+        client,
+        username=f"fantasma-{uuid.uuid4().hex[:8]}",
+        etiqueta="Sin registro",
+        usuario_id=str(uuid.uuid4()),
     )
 
     fila = await _resumen(client, sid)
@@ -141,8 +168,12 @@ async def test_la_cola_de_pausas_dice_quien_la_pide(client, db_session):
     saber a quién le está autorizando salir del examen.
     """
     username = f"marie-{uuid.uuid4().hex[:8]}"
-    await _crear_usuario(db_session, username=username, nombre="Marie", apellido="Curie")
-    sid = await _sesion_de(client, username=username, etiqueta="Parcial 1")
+    uid = await _crear_usuario(
+        db_session, username=username, nombre="Marie", apellido="Curie"
+    )
+    sid = await _sesion_de(
+        client, username=username, etiqueta="Parcial 1", usuario_id=uid
+    )
 
     pedir = await client.post(
         f"/api/v1/proctoring/sessions/{sid}/pausas",

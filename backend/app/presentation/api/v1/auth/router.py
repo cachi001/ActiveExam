@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError, MultipleResultsFound
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -193,6 +193,32 @@ async def login(
             # viola, fallar con el MISMO 401 genérico en vez de un 500 que
             # confirmaría la colisión al atacante.
             usuario = None
+
+        if usuario is None:
+            # Sin coincidencia EXACTA se prueba sin distinguir mayúsculas.
+            #
+            # El username lo elige la persona a mano en su primer ingreso por el
+            # campus. Quien puso `JuanPerez` y escribe `juanperez` no entraba, y
+            # lo que veía era "Credenciales inválidas": el día del examen eso se
+            # lee como "me falla la clave" o "me borraron la cuenta".
+            #
+            # Va DESPUES del exacto y solo si el exacto no encontró nada: lo que
+            # ya funcionaba no cambia. Y si acá aparece MAS DE UNA cuenta (datos
+            # anteriores a la guarda de abajo), NO se elige una: se rechaza con el
+            # mismo 401 genérico. Meter a alguien en la cuenta de otro es peor que
+            # no dejarlo entrar.
+            candidatos = (
+                await session.execute(
+                    select(UsuarioModel).where(
+                        or_(
+                            func.lower(UsuarioModel.email) == body.username.lower(),
+                            func.lower(UsuarioModel.username) == body.username.lower(),
+                        ),
+                        UsuarioModel.eliminado_en.is_(None),
+                    )
+                )
+            ).scalars().all()
+            usuario = candidatos[0] if len(candidatos) == 1 else None
 
         # Verificar: usuario debe existir, tener password_hash y credencial local.
         # Mensaje GENERICO: no revela si el usuario existe, si fue dado de baja,
@@ -559,11 +585,14 @@ async def cambiar_contrasena(
                 )
             # Validación CRUZADA (c-76-4): no puede coincidir con el username NI
             # el email de otro usuario — el login matchea por "email OR username".
+            # Sin distinguir mayúsculas: `juan_perez` y `Juan_Perez` se leen como
+            # el mismo nombre, y dos personas con nombres que a simple vista son
+            # iguales es un problema el día que hay que saber quién es quién.
             cruce = await session.execute(
                 select(UsuarioModel.id).where(
                     or_(
-                        UsuarioModel.username == body.nuevo_username,
-                        UsuarioModel.email == body.nuevo_username,
+                        func.lower(UsuarioModel.username) == body.nuevo_username.lower(),
+                        func.lower(UsuarioModel.email) == body.nuevo_username.lower(),
                     ),
                     UsuarioModel.id != usuario.id,
                 )

@@ -328,20 +328,42 @@ class MoodleWritebackService:
         )
         from app.infrastructure.persistence.models.transactional import UsuarioModel
 
+        # migración 0107: se joinea por ID. Antes se joineaba por
+        # `alumno_idnumber == usuario.username`, y ese texto lo ELIGE la persona en
+        # su primer ingreso por el campus: al cambiarlo, la nota perdía el camino a
+        # Moodle. El join por username queda de respaldo para las sesiones
+        # anteriores a la migración, que no tienen el id.
+        #
+        # migración 0106: la identidad de Moodle ya vive en su propia columna, así
+        # que se lee de ahí y no de un JSONB.
         fila = (
             await db.execute(
-                _select(UsuarioModel.attrs_federados)
+                _select(UsuarioModel.moodle_userid, UsuarioModel.attrs_federados)
                 .join(
                     ProctoringSessionModel,
-                    ProctoringSessionModel.alumno_idnumber == UsuarioModel.username,
+                    ProctoringSessionModel.alumno_usuario_id == UsuarioModel.id,
                 )
                 .where(ProctoringSessionModel.id == session_id)
                 .limit(1)
             )
-        ).scalar_one_or_none()
-        if not fila:
+        ).first()
+        if fila is None:
+            fila = (
+                await db.execute(
+                    _select(UsuarioModel.moodle_userid, UsuarioModel.attrs_federados)
+                    .join(
+                        ProctoringSessionModel,
+                        ProctoringSessionModel.alumno_idnumber == UsuarioModel.username,
+                    )
+                    .where(ProctoringSessionModel.id == session_id)
+                    .limit(1)
+                )
+            ).first()
+        if fila is None:
             return None
-        valor = fila.get("moodle_userid")
+        if fila.moodle_userid:
+            return str(fila.moodle_userid)
+        valor = (fila.attrs_federados or {}).get("moodle_userid")
         return str(valor) if valor is not None else None
 
     async def _nota_maxima_del_examen(

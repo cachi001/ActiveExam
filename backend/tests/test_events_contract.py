@@ -36,12 +36,21 @@ def test_tipos_del_dominio_son_los_de_rn_ev_04() -> None:
         # de la ausencia (medida server-side).
         "recarga_pagina",
         "reanudacion_tardia",
+        # C-76 bloque 5: screenshots durante una pausa APROBADA. Nacen BASELINE a
+        # propósito (L2.5, regla dura #5): son insumo de la revisión humana y no
+        # suman solos al score. La ausencia de captura tampoco es un veredicto.
+        "captura_pausa",
+        "pausa_sin_captura",
     }
     assert {t.value for t in TipoEvento} == esperados
 
 
 def test_severidades_del_dominio() -> None:
-    assert {s.value for s in Severidad} == {"baseline", "media", "alta", "critica"}
+    # `baja` ya existía en la DB (CHECK de evento_score_config), en la tabla de
+    # pesos y en el catálogo del cliente; faltaba en el enum, así que el enum no
+    # describía el vocabulario real. Está acá porque el contrato es esa lista, no
+    # la que había cuando se escribió este test.
+    assert {s.value for s in Severidad} == {"baseline", "baja", "media", "alta", "critica"}
 
 
 def test_version_actual_esta_soportada() -> None:

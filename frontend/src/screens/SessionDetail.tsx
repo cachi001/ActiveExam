@@ -41,7 +41,7 @@ export default function SessionDetail() {
             <Avatar src={sel.foto} alt={sel.estudiante} size={64} />
             <div>
               <h2 className="font-headline text-headline-md text-on-surface">{sel.estudiante}</h2>
-              <p className="text-label-md text-on-surface-variant">Legajo {sel.legajo} · {sel.examen} ({sel.catedra})</p>
+              <p className="text-label-md text-on-surface-variant">Usuario {sel.legajo} · {sel.examen} ({sel.catedra})</p>
             </div>
           </div>
           <Badge tone="error" dot>Score de prioridad {sel.score} pts</Badge>

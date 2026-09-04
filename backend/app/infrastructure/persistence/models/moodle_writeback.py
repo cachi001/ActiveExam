@@ -142,6 +142,21 @@ class MoodleWritebackEstadoModel(Base):
     )
     alumno_idnumber: Mapped[str | None] = mapped_column(String(255), nullable=True)
     alumno_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+
+    # migración 0107: el alumno, referenciado por su id.
+    #
+    # Antes esta tabla lo identificaba SOLO con dos textos (el username y el
+    # correo) y joineaba por ahí. Los dos pueden cambiar — el username lo ELIGE la
+    # persona en su primer ingreso por el campus — y cuando cambian, el join se
+    # queda sin nada: el tutor deja de ver de quién es la sesión y la nota pierde
+    # el camino a Moodle. El id estaba disponible al crearla (`principal.subject`).
+    #
+    # SIN clave foránea, a propósito: la columna referencia, no restringe. Con FK,
+    # un id que no resuelva haría fallar el INSERT de un registro que existe para
+    # dejar constancia de qué pasó.
+    alumno_usuario_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), nullable=True
+    )
     nota: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
     estado: Mapped[str] = mapped_column(
         String(20),

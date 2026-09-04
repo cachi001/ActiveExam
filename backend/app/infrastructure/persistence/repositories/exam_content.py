@@ -355,6 +355,15 @@ class ExamenContenidoSqlRepository:
 
         base = self._filtro_q(self._stmt_resumen(), q)
         base = self._filtro_estado(base, estado)
+        # `examen_prueba_habilitado.usuario_id` es UUID en Postgres: comparar
+        # contra un subject que no lo es reventaba con DataError, o sea un 500 en
+        # la cara del alumno al abrir "Mis exámenes". Un id que no puede existir
+        # tampoco puede estar habilitado, así que se separa de
+        # `usuario_id_para_pruebas` (que sigue distinguiendo alumno de staff) y las
+        # dos subconsultas de habilitación quedan en "no habilitado".
+        habilitado_id = (
+            usuario_id_para_pruebas if _es_uuid(usuario_id_para_pruebas) else None
+        )
         if not incluir_borradores:
             from app.infrastructure.persistence.models.exam_content import (
                 ExamenPruebaHabilitadoModel as _Habilitado,
@@ -370,11 +379,11 @@ class ExamenContenidoSqlRepository:
                     ExamenContenidoModel.modo_prueba.is_(True),
                     ExamenContenidoModel.id.in_(
                         select(_Habilitado.examen_contenido_id).where(
-                            _Habilitado.usuario_id == usuario_id_para_pruebas
+                            _Habilitado.usuario_id == habilitado_id
                         )
                     ),
                 )
-                if usuario_id_para_pruebas is not None
+                if habilitado_id is not None
                 else false()
             )
             base = base.where(
@@ -392,17 +401,23 @@ class ExamenContenidoSqlRepository:
                 ExamenPruebaHabilitadoModel,
             )
 
-            base = base.where(
-                or_(
-                    ExamenContenidoModel.modo_prueba.is_(False),
-                    ExamenContenidoModel.id.in_(
-                        select(ExamenPruebaHabilitadoModel.examen_contenido_id).where(
-                            ExamenPruebaHabilitadoModel.usuario_id
-                            == usuario_id_para_pruebas
-                        )
-                    ),
+            if habilitado_id is not None:
+                base = base.where(
+                    or_(
+                        ExamenContenidoModel.modo_prueba.is_(False),
+                        ExamenContenidoModel.id.in_(
+                            select(
+                                ExamenPruebaHabilitadoModel.examen_contenido_id
+                            ).where(
+                                ExamenPruebaHabilitadoModel.usuario_id == habilitado_id
+                            )
+                        ),
+                    )
                 )
-            )
+            else:
+                # Sin un id que pueda existir, la respuesta conservadora: no ve
+                # ningún examen en modo prueba.
+                base = base.where(ExamenContenidoModel.modo_prueba.is_(False))
         if not incluir_materias_de_baja:
             base = base.where(MateriaModel.activa.is_(True))
         if comision_ids is not None:

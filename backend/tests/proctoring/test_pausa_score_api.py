@@ -27,7 +27,13 @@ _PESO_GAZE = 50  # peso vivo sembrado para GAZE_DEVIATION
 
 # GET /sessions/{id} (detalle) y PATCH /pausas/{id} (aprobar) son del proctor; el
 # ``client`` por defecto va como estudiante. Se mandan con Bearer de rol proctor.
-_PROCTOR = auth_headers(["coordinador"])  # c-76: rol proctor eliminado -> coordinador supervisa
+# c-76 eliminó el rol proctor y el coordinador pasó a supervisar. c-79 lo ACOTÓ:
+# el coordinador solo alcanza las sesiones de SUS materias y el tutor las de SU
+# comisión, así que sobre una sesión sin comisión (las de estos tests) recibe un
+# 403 "sesion_ajena" correcto. El supervisor de alcance institucional hoy es
+# admin_sistema, y es el que corresponde acá: lo que estos tests miran es el
+# CONTENIDO del detalle, no el alcance (eso vive en test_rbac_guards).
+_PROCTOR = auth_headers(["admin_sistema"])
 
 
 @pytest_asyncio.fixture
@@ -137,7 +143,18 @@ async def test_detalle_mezcla_dentro_y_fuera_de_pausa(
     resp = await client.get(f"{_BASE}/sessions/{sid}", headers=_PROCTOR)
     assert resp.status_code == 200
     data = resp.json()
-    badges = [e["en_pausa_autorizada"] for e in data["eventos"]]
+    # C-76 bloque 5: cerrar la ventana sin ninguna captura emite SERVER-SIDE un
+    # 'pausa_sin_captura' (BASELINE, señal para el revisor). Es un evento legítimo
+    # del sistema y aparece en la lista, así que los badges se cuentan sobre los
+    # eventos que reportó el cliente. Antes se contaban todos y este test rompía
+    # por una señal que el producto agrega a propósito.
+    tipos = [e["tipo"].lower() for e in data["eventos"]]
+    assert tipos.count("pausa_sin_captura") == 1, tipos
+    badges = [
+        e["en_pausa_autorizada"]
+        for e in data["eventos"]
+        if e["tipo"].lower() != "pausa_sin_captura"
+    ]
     # Exactamente un evento marcado en pausa, uno fuera
     assert badges.count(True) == 1
     assert badges.count(False) == 1

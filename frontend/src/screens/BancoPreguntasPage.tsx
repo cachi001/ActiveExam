@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Button, Card, Icon, LoadingSpinner } from '../ui/components';
 import { STAFF_NAV } from '../ui/nav';
@@ -9,6 +10,7 @@ import type {
   CategoriaPregunta,
   EstadoPregunta,
   PreguntaBanco,
+  UsoDeCategoria,
 } from '../lib/apiAdmin/bancoPreguntasApi';
 import {
   listarCategorias,
@@ -21,12 +23,14 @@ import {
   moverCategoria,
   darDeBajaPregunta,
   reactivarPregunta,
+  usoDeCategoria,
 } from '../lib/apiAdmin/bancoPreguntasApi';
 import { CategoriasTree, serializarDnd } from './banco-preguntas/CategoriasTree';
 import { PreviewPreguntaModal } from './banco-preguntas/PreviewPreguntaModal';
 import { limpiarEnunciadoCloze } from '../lib/cloze';
 import { ModalOverlay } from '../ui/ModalOverlay';
 import { HelpButton } from '../ui/HelpButton';
+import { AvisoUsoCategoria } from '../ui/AvisoUsoCategoria';
 import { Pagination, PageSizeSelect } from '../ui/Pagination';
 import { ImportarBancoModal } from './banco-preguntas/ImportarBancoModal';
 import type { ImportarBancoXmlResult } from '../lib/apiAdmin/bancoPreguntasApi';
@@ -39,12 +43,15 @@ function DialogoCategoria({
   titulo,
   valorInicial,
   placeholder = 'Nombre de la categoría',
+  aviso,
   onConfirmar,
   onCancelar,
 }: {
   titulo: string;
   valorInicial: string;
   placeholder?: string;
+  /** Aviso de uso (al renombrar). Informa, nunca deshabilita el botón. */
+  aviso?: ReactNode;
   onConfirmar: (nombre: string) => void;
   onCancelar: () => void;
 }) {
@@ -53,6 +60,7 @@ function DialogoCategoria({
     <ModalOverlay etiqueta={titulo} onCerrar={onCancelar}>
       <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm flex flex-col gap-4">
         <h3 className="text-title-md font-semibold">{titulo}</h3>
+        {aviso}
         <input
           className="border rounded-lg px-3 py-2 text-body-md w-full focus:outline-none focus:ring-2 focus:ring-primary"
           value={nombre}
@@ -82,10 +90,14 @@ function DialogoCategoria({
 
 function DialogoBorrar({
   categoria,
+  aviso,
   onConfirmar,
   onCancelar,
 }: {
   categoria: CategoriaPregunta;
+  /** Aviso de uso. Se muestra ANTES de confirmar y NO bloquea la baja: la baja
+   *  no cambia notas ni saca preguntas de un examen ya armado. */
+  aviso?: ReactNode;
   onConfirmar: () => void;
   onCancelar: () => void;
 }) {
@@ -105,6 +117,7 @@ function DialogoBorrar({
           No se borra nada: las preguntas siguen guardadas con su categoría, y podés
           devolverla cuando quieras desde «Categorías dadas de baja».
         </p>
+        {aviso}
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onCancelar}>Cancelar</Button>
           <Button variant="danger" onClick={onConfirmar}>
@@ -331,6 +344,33 @@ export default function BancoPreguntasPage() {
   // para recuperarlas, no para clasificar preguntas nuevas.
   const [categoriasDeBaja, setCategoriasDeBaja] = useState<CategoriaPregunta[]>([]);
   const [dialogoImportar, setDialogoImportar] = useState(false);
+
+  // Uso de la categoría del diálogo abierto (renombrar o dar de baja). Se
+  // consulta al ABRIR el diálogo: el aviso tiene que estar delante del docente
+  // antes de que confirme, no después. Nunca bloquea nada.
+  const [uso, setUso] = useState<UsoDeCategoria | null>(null);
+  const [usoCargando, setUsoCargando] = useState(false);
+  const [usoError, setUsoError] = useState<string | null>(null);
+  const categoriaEnDialogo = dialogoRenombrar?.id ?? dialogoBorrar?.id ?? null;
+
+  useEffect(() => {
+    if (!categoriaEnDialogo) {
+      setUso(null);
+      setUsoError(null);
+      return;
+    }
+    let vigente = true;
+    setUso(null);
+    setUsoError(null);
+    setUsoCargando(true);
+    usoDeCategoria(categoriaEnDialogo)
+      .then((u) => { if (vigente) setUso(u); })
+      // No se calla: un aviso perdido en silencio hace que el docente confirme
+      // creyendo que la categoría no la usa ningún examen.
+      .catch(() => { if (vigente) setUsoError('no se pudo consultar'); })
+      .finally(() => { if (vigente) setUsoCargando(false); });
+    return () => { vigente = false; };
+  }, [categoriaEnDialogo]);
 
   useEffect(() => {
     api.materiasDisponibles().then(setMaterias).catch(() => {});
@@ -703,6 +743,9 @@ export default function BancoPreguntasPage() {
         <DialogoCategoria
           titulo="Renombrar categoría"
           valorInicial={dialogoRenombrar.nombre}
+          aviso={
+            <AvisoUsoCategoria uso={uso} cargando={usoCargando} error={usoError} />
+          }
           onConfirmar={handleRenombrar}
           onCancelar={() => setDialogoRenombrar(null)}
         />
@@ -710,6 +753,9 @@ export default function BancoPreguntasPage() {
       {dialogoBorrar && (
         <DialogoBorrar
           categoria={dialogoBorrar}
+          aviso={
+            <AvisoUsoCategoria uso={uso} cargando={usoCargando} error={usoError} />
+          }
           onConfirmar={handleBorrar}
           onCancelar={() => setDialogoBorrar(null)}
         />

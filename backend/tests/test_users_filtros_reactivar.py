@@ -460,8 +460,18 @@ class TestReactivar:
         )
         assert resp.status_code == 409
 
-    async def test_reactivar_409_si_mismo(self, ctx):
-        """Admin intenta reactivarse a sí mismo → 409."""
+    async def test_un_admin_dado_de_baja_no_se_reactiva_a_si_mismo(self, ctx):
+        """Cae en 401, no en el 409 de "no podés reactivarte a vos mismo".
+
+        Cambió deliberadamente: el guard ahora contrasta el token contra la base
+        (``estado_cuenta``), así que una cuenta dada de baja deja de operar en el
+        acto en vez de seguir andando hasta que su token venza. El request ni
+        llega al endpoint. La guarda del 409 sigue en el código como segunda
+        línea, pero por este camino ya no se alcanza: quien está de baja no pasa
+        del guard, y quien está activo recibe "el usuario ya está activo".
+
+        Lo que importa se mantiene: NO se reactiva solo.
+        """
         # Primero soft-delete directo para dejarlo inactivo
         await _soft_delete(ctx["factory"], ctx["admin_uid"])
 
@@ -470,7 +480,7 @@ class TestReactivar:
             f"/api/v1/users/{ctx['admin_uid']}/reactivar",
             headers={"Authorization": f"Bearer {ctx['admin_token']}"},
         )
-        assert resp.status_code == 409
+        assert resp.status_code == 401
 
 
 # ===========================================================================
