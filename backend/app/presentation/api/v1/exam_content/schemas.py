@@ -766,6 +766,20 @@ class ComisionResponse(BaseModel):
     tutores: list["TutorInfo"] = []
 
 
+class ComisionEncabezadoResponse(BaseModel):
+    """Encabezado liviano de una comisión + su materia, para pantallas que solo
+    necesitan el título (p. ej. la de alumnos inscriptos, que llega por URL con
+    solo el id de la comisión)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    codigo: str
+    nombre: str
+    materia_id: str
+    materia_nombre: str
+
+
 class ImpactoBajaResponse(BaseModel):
     """c-78 — Qué se lleva puesto una baja, para avisarlo ANTES de confirmar.
 
@@ -1034,10 +1048,18 @@ class AlumnosComisionPaginadosResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[AlumnoElegibilidadResponse]
+    #: Cuántos coinciden con `q`/`estado` (el filtro aplicado). Sobre esto pagina.
     total: int
-    #: Cuántos de TODOS los inscriptos (no de la página) no pueden rendir todavía.
-    #: La pantalla lo usa para avisar "faltan N" sin tener que recorrer las páginas:
-    #: con 89 inscriptos y 10 por página, el docente no puede deducirlo mirando.
+    #: Cuántos hay inscriptos en la comisión EN TOTAL, sin aplicar `q`/`estado`.
+    #: `no_pueden_rendir` se cuenta sobre este universo, no sobre `total`: son la
+    #: pareja correcta para el aviso ("N de total_comision no van a poder
+    #: rendir"). Si se mezclara `no_pueden_rendir` con `total` (el filtrado), un
+    #: filtro que no matchea a nadie mostraría "1 de 0 inscriptos".
+    total_comision: int = 0
+    #: Cuántos de TODOS los inscriptos (no de la página, ni del filtro) no pueden
+    #: rendir todavía. La pantalla lo usa para avisar "faltan N" sin tener que
+    #: recorrer las páginas: con 89 inscriptos y 10 por página, el docente no
+    #: puede deducirlo mirando.
     no_pueden_rendir: int = 0
     page: int
     page_size: int

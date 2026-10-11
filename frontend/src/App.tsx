@@ -35,6 +35,7 @@ const UsuarioCreate         = lazy(() => import('./screens/admin/UsuarioCreate')
 const UsuarioEdit           = lazy(() => import('./screens/admin/UsuarioEdit'));
 const IntegracionLti        = lazy(() => import('./screens/admin/IntegracionLti'));
 const MateriasComisiones    = lazy(() => import('./screens/MateriasComisiones'));
+const AlumnosInscriptos     = lazy(() => import('./screens/AlumnosInscriptos'));
 const DetalleUsuario        = lazy(() => import('./screens/DetalleUsuario'));
 const ExamDetail            = lazy(() => import('./screens/ExamDetail'));
 const Notas                 = lazy(() => import('./screens/Notas'));
@@ -135,6 +136,7 @@ export default function App() {
     '/admin/usuarios': g(<GestionUsuarios />, ADMIN),
     '/admin/usuarios/nuevo': g(<UsuarioCreate />, ADMIN),
     '/admin/materias': g(<MateriasComisiones />, ACADEMICO),
+    '/admin/materias/:comisionId/alumnos': g(<AlumnosInscriptos />, ACADEMICO),
     '/admin/usuarios/:id/editar': g(<UsuarioEdit />, ADMIN),
     '/admin/usuarios/:id': g(<DetalleUsuario />, ADMIN),
     // C-73 §10.8: deja de ser admin-only. El docente entra pero SOLO ve la pestaña

@@ -8,6 +8,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { createRef } from 'react';
 import { ComisionesAccordionBody } from './ComisionesAccordionBody';
 import type { Comision } from '../../../lib/types';
@@ -24,24 +25,25 @@ const comision: Comision = {
 
 function renderBody(comisiones: Comision[]) {
   return render(
-    <ComisionesAccordionBody
-      materiaId="mat-1"
-      cargando={false}
-      comisiones={comisiones}
-      mostrarFormComision={false}
-      formComision={null}
-      setFormComision={() => {}}
-      enviandoComision={false}
-      errorFormComision={null}
-      primerInputComisionRef={createRef<HTMLInputElement>()}
-      periodos={[]}
-      onSubmitComision={() => {}}
-      onCancelarComision={() => {}}
-      abrirCrearComision={() => {}}
-      abrirEditarComision={() => {}}
-      comisionExpandida={null}
-      toggleComision={() => {}}
-    />,
+    <MemoryRouter>
+      <ComisionesAccordionBody
+        materiaId="mat-1"
+        cargando={false}
+        comisiones={comisiones}
+        mostrarFormComision={false}
+        formComision={null}
+        setFormComision={() => {}}
+        enviandoComision={false}
+        errorFormComision={null}
+        primerInputComisionRef={createRef<HTMLInputElement>()}
+        periodos={[]}
+        onSubmitComision={() => {}}
+        onCancelarComision={() => {}}
+        abrirCrearComision={() => {}}
+        abrirEditarComision={() => {}}
+        onToggleActivaComision={() => {}}
+      />
+    </MemoryRouter>,
   );
 }
 

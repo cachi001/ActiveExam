@@ -3,7 +3,7 @@ export const INPUT_CLASS =
   'text-on-surface outline-none transition-colors hover:border-outline focus:border-primary ' +
   'focus:ring-1 focus:ring-primary/30 disabled:opacity-50 disabled:cursor-not-allowed';
 
-export const LABEL_CLASS = 'block text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-1';
+export const LABEL_CLASS = 'block text-[13px] font-medium text-on-surface-variant mb-1.5';
 
 export interface FormMateria {
   modo: 'crear' | 'editar';

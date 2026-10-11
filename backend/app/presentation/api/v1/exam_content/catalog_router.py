@@ -142,6 +142,7 @@ from app.presentation.api.v1.exam_content.schemas import (
     AsociarComisionResponse,
     ComisionActualizarRequest,
     ComisionCrearRequest,
+    ComisionEncabezadoResponse,
     ComisionTutorRequest,
     ComisionResponse,
     ExamenConfigPatchRequest,
@@ -2432,6 +2433,34 @@ def create_exam_content_router(
         return comision, materia
 
     @router.get(
+        "/comisiones/{comision_id}",
+        response_model=ComisionEncabezadoResponse,
+        summary="Encabezado de una comisión (nombre + materia) por id",
+    )
+    async def obtener_encabezado_comision(
+        comision_id: str,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> ComisionEncabezadoResponse:
+        """Solo el título: para pantallas que llegan por URL con el id de la
+        comisión y necesitan mostrar de qué comisión/materia se trata (p. ej.
+        la de alumnos inscriptos), sin traer el resto de `ComisionResponse`.
+        404 'comision_no_encontrada' si no existe."""
+        await _exigir_pertenencia_comision(principal, comision_id)
+        comision, materia = await _comision_para_export(comision_id)
+        if comision is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": "comision_no_encontrada", "comision_id": comision_id},
+            )
+        return ComisionEncabezadoResponse(
+            id=comision.id,
+            codigo=comision.codigo,
+            nombre=comision.nombre,
+            materia_id=comision.materia_id,
+            materia_nombre=materia.nombre if materia else "",
+        )
+
+    @router.get(
         "/comisiones/{comision_id}/alumnos",
         response_model=AlumnosComisionPaginadosResponse,
         summary="Listar los inscriptos de una comisión (paginado) con su elegibilidad",
@@ -2440,6 +2469,8 @@ def create_exam_content_router(
         comision_id: str,
         page: int = 1,
         page_size: int = 25,
+        q: str | None = None,
+        estado: str | None = None,
         principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> AlumnosComisionPaginadosResponse:
         """Lista PAGINADA de los alumnos inscriptos, con su elegibilidad.
@@ -2452,21 +2483,44 @@ def create_exam_content_router(
         completo era ilegible. `page_size` alto (>= total) devuelve todo, así que
         un consumidor que quiera la lista entera la sigue pudiendo pedir.
 
+        `q` busca por nombre/apellido/usuario/email (contiene, sin mayúsculas).
+        `estado` filtra por elegibilidad: 'puede_rendir' | 'no_puede_rendir'
+        (cualquier otro valor, incluido None, no filtra).
+
         La elegibilidad se resuelve por alumno (consentimiento + biometría), así
         que el recorte se hace DESPUÉS de calcularla: `total` cuenta a todos los
-        inscriptos, no solo a los de la página.
+        que coinciden con el filtro, no solo a los de la página. `no_pueden_rendir`
+        es la excepción: siempre sobre TODOS los inscriptos de la comisión, sin
+        filtrar — es un aviso de salud de la comisión entera, no del recorte.
         """
         alumnos = await _alumnos_de_comision(principal, comision_id)
+        no_pueden_rendir = sum(1 for a in alumnos if not getattr(a, "puede_rendir", False))
+
+        filtrados = alumnos
+        if q:
+            termino = q.strip().lower()
+            if termino:
+                filtrados = [
+                    a
+                    for a in filtrados
+                    if termino
+                    in " ".join(
+                        filter(None, [a.nombre, a.apellido, a.username, a.email])
+                    ).lower()
+                ]
+        if estado == "puede_rendir":
+            filtrados = [a for a in filtrados if getattr(a, "puede_rendir", False)]
+        elif estado == "no_puede_rendir":
+            filtrados = [a for a in filtrados if not getattr(a, "puede_rendir", False)]
+
         pagina_actual = max(1, page)
         tamano = max(1, page_size)
         inicio = (pagina_actual - 1) * tamano
         return AlumnosComisionPaginadosResponse(
-            items=[_alumno_a_response(a) for a in alumnos[inicio : inicio + tamano]],
-            total=len(alumnos),
-            # Se cuenta sobre TODOS, antes del recorte de página: es el dato que
-            # el docente necesita antes del examen y no se puede deducir mirando
-            # una página de 10 sobre 89.
-            no_pueden_rendir=sum(1 for a in alumnos if not getattr(a, "puede_rendir", False)),
+            items=[_alumno_a_response(a) for a in filtrados[inicio : inicio + tamano]],
+            total=len(filtrados),
+            total_comision=len(alumnos),
+            no_pueden_rendir=no_pueden_rendir,
             page=pagina_actual,
             page_size=tamano,
         )

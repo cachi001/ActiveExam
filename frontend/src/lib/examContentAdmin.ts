@@ -624,27 +624,66 @@ export interface InscripcionAlumnoResponse {
  *  404 → la comisión no existe. */
 export interface AlumnosComisionPaginados {
   items: AlumnoInscripto[];
+  /** Cuántos coinciden con el filtro aplicado (`q`/`estado`). Pagina sobre esto. */
   total: number;
   /**
-   * Cuántos del TOTAL no pueden rendir todavía (les falta consentimiento o
-   * biometría). Se cuenta server-side sobre todos los inscriptos: contarlo en el
-   * cliente daría solo los de la página visible y el número cambiaría de hoja en
-   * hoja. Ausente en respuestas viejas → 0.
+   * Cuántos hay inscriptos en la comisión EN TOTAL, sin filtro. Es la pareja
+   * correcta de `no_pueden_rendir` en el aviso — usar `total` ahí da lecturas
+   * sin sentido ("1 de 0 inscriptos") en cuanto el filtro no matchea a nadie.
+   * Ausente en respuestas viejas → 0.
+   */
+  total_comision?: number;
+  /**
+   * Cuántos del total de la comisión (no del filtro ni de la página) no pueden
+   * rendir todavía (les falta consentimiento o biometría). Se cuenta server-side
+   * sobre todos los inscriptos. Ausente en respuestas viejas → 0.
    */
   no_pueden_rendir?: number;
   page: number;
   page_size: number;
 }
 
+/** Encabezado liviano de una comisión (nombre + materia). GET
+ *  /exam-content/comisiones/{comisionId}. 404 → la comisión no existe. Para
+ *  pantallas que llegan por URL con solo el id (p. ej. alumnos inscriptos). */
+export interface ComisionEncabezado {
+  id: string;
+  codigo: string;
+  nombre: string;
+  materia_id: string;
+  materia_nombre: string;
+}
+
+export async function obtenerEncabezadoComision(
+  comisionId: string,
+): Promise<ComisionEncabezado> {
+  const res = await fetchAutenticado(
+    `${API_BASE}/exam-content/comisiones/${encodeURIComponent(comisionId)}`,
+    { method: 'GET', headers: authHeaders() },
+  );
+  if (!res.ok) return throwAdminError(res);
+  return res.json() as Promise<ComisionEncabezado>;
+}
+
+/** 'puede_rendir' | 'no_puede_rendir' filtra por elegibilidad; sin valor = todos. */
+export type EstadoElegibilidadFiltro = 'puede_rendir' | 'no_puede_rendir' | '';
+
 export async function listarAlumnosDeComision(
   comisionId: string,
-  params: { page?: number; page_size?: number } = {},
+  params: {
+    page?: number;
+    page_size?: number;
+    q?: string;
+    estado?: EstadoElegibilidadFiltro;
+  } = {},
 ): Promise<AlumnosComisionPaginados> {
   // c-78 §13.2: el endpoint pasó a devolver { items, total, page, page_size }.
   // Con 40 alumnos por comisión el listado completo era ilegible.
   const qs = new URLSearchParams();
   if (params.page !== undefined) qs.set('page', String(params.page));
   if (params.page_size !== undefined) qs.set('page_size', String(params.page_size));
+  if (params.q) qs.set('q', params.q);
+  if (params.estado) qs.set('estado', params.estado);
   const cola = qs.toString();
   const res = await fetchAutenticado(
     `${API_BASE}/exam-content/comisiones/${encodeURIComponent(comisionId)}/alumnos${

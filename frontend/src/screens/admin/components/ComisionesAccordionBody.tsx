@@ -1,9 +1,10 @@
 import type React from 'react';
 import { Fragment, useState } from 'react';
 import { Icon, Button } from '../../../ui/components';
+import { ModalOverlay } from '../../../ui/ModalOverlay';
 import { ActionMenu, type ActionItem } from '../../../ui/ActionMenu';
 import type { Comision } from '../../../lib/types';
-import { AlumnosComisionPanel } from './AlumnosComisionPanel';
+import { useNavigate } from '../../../lib/router';
 import { AsignarDocenteDialog } from './AsignarDocenteDialog';
 import { DetalleComisionDialog } from './DetalleComisionDialog';
 import { resumenTutores } from './resumenTutores';
@@ -28,8 +29,6 @@ interface ComisionesAccordionBodyProps {
   abrirEditarComision: (materiaId: string, c: Comision) => void;
   /** Baja lógica: da de baja o reactiva la comisión (C-72 §17, c-78). */
   onToggleActivaComision: (c: Comision) => void;
-  comisionExpandida: string | null;
-  toggleComision: (id: string) => void;
 }
 
 export function ComisionesAccordionBody({
@@ -48,9 +47,8 @@ export function ComisionesAccordionBody({
   abrirCrearComision,
   abrirEditarComision,
   onToggleActivaComision,
-  comisionExpandida,
-  toggleComision,
 }: ComisionesAccordionBodyProps) {
+  const navigate = useNavigate();
   // C-73 §9.5: docente a cargo de la comisión.
   const esAdmin = useAuth((st) => st.hasRole)(['admin_sistema']);
   // Crear/editar/borrar comisiones = estructura académica (admin). El tutor
@@ -69,13 +67,15 @@ export function ComisionesAccordionBody({
   // solo aparecía con la comisión VACÍA, así que una comisión con inscriptos no
   // se podía dar de baja desde ninguna parte (el toggle estaba declarado pero
   // nunca cableado al menú).
-  const accionesComision = (c: Comision, comExpandida: boolean): ActionItem[] => {
+  const accionesComision = (c: Comision): ActionItem[] => {
     return [
       // "Ver detalle" es la contraparte de haber achicado la fila: los tutores
       // por nombre y el resto de los datos de la comisión salieron de las
       // columnas para no seguir ensanchando la tabla, y viven acá.
       { label: 'Ver detalle', icon: 'info', onClick: () => setDetallando(c) },
-      { label: comExpandida ? 'Ocultar alumnos' : 'Ver alumnos', icon: 'groups', onClick: () => toggleComision(c.id) },
+      // Pantalla propia (no un panel expandible acá adentro): con varios
+      // inscriptos el acordeón empujaba el resto de esta pantalla fuera de vista.
+      { label: 'Ver alumnos', icon: 'groups', onClick: () => navigate(`/admin/materias/${c.id}/alumnos`) },
       ...(puedeEditarEstructura
         ? [{ label: 'Editar comisión', icon: 'edit', onClick: () => abrirEditarComision(materiaId, c) } as ActionItem]
         : []),
@@ -98,15 +98,31 @@ export function ComisionesAccordionBody({
     ];
   };
   return (
-    <div className="bg-surface-container-low border-t border-outline-variant/20">
+    <div className="border-t border-outline-variant/20">
       {/* Formulario de comisión */}
       {mostrarFormComision && formComision && (
-        <div className="px-4 pt-4 pb-3">
-          <p className="text-[12px] font-semibold text-on-surface-variant uppercase tracking-wide mb-3">
+        <ModalOverlay
+          etiqueta={formComision.modo === 'crear' ? 'Nueva comisión' : 'Editar comisión'}
+          onCerrar={enviandoComision ? undefined : onCancelarComision}
+        >
+        <div className="w-full max-w-2xl bg-white rounded-lg border border-surface-200 shadow-lg flex flex-col max-h-[85vh]">
+        <header className="flex items-center justify-between gap-md px-lg pt-lg pb-md border-b border-surface-200">
+          <h2 className="text-title-lg text-on-surface">
             {formComision.modo === 'crear' ? 'Nueva comisión' : 'Editar comisión'}
-          </p>
-          <form onSubmit={onSubmitComision} className="space-y-3">
-            <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-3">
+          </h2>
+          <button
+            type="button"
+            onClick={onCancelarComision}
+            disabled={enviandoComision}
+            aria-label="Cerrar"
+            className="text-on-surface-variant hover:text-on-surface disabled:opacity-50"
+          >
+            <Icon name="close" className="text-[22px]" />
+          </button>
+        </header>
+        <div className="px-lg py-lg overflow-y-auto">
+          <form onSubmit={onSubmitComision} className="space-y-5">
+            <div className="grid sm:grid-cols-2 gap-5">
               {formComision.modo === 'crear' && (
                 <div>
                   <label htmlFor="comision-codigo" className={LABEL_CLASS}>
@@ -147,6 +163,9 @@ export function ComisionesAccordionBody({
                   className={INPUT_CLASS}
                 />
               </div>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-5">
               <div>
                 <label htmlFor="comision-periodo" className={LABEL_CLASS}>
                   Período
@@ -245,17 +264,16 @@ export function ComisionesAccordionBody({
               </div>
             )}
 
-            <div className="flex gap-sm justify-end">
+            <div className="flex gap-sm justify-end pt-2 border-t border-surface-200">
               <Button
                 type="button"
                 variant="ghost"
-                size="sm"
                 onClick={onCancelarComision}
                 disabled={enviandoComision}
               >
                 Cancelar
               </Button>
-              <Button type="submit" size="sm" disabled={enviandoComision}>
+              <Button type="submit" disabled={enviandoComision}>
                 {enviandoComision ? (
                   <span className="inline-flex items-center gap-xs">
                     <Icon name="progress_activity" className="ae-spin text-[18px]" />
@@ -266,6 +284,8 @@ export function ComisionesAccordionBody({
             </div>
           </form>
         </div>
+        </div>
+        </ModalOverlay>
       )}
 
       {/* Tabla de comisiones */}
@@ -296,62 +316,59 @@ export function ComisionesAccordionBody({
               Abajo de 1280 se usan las cards, que muestran los mismos datos sin
               esconder ninguno. */}
           <div className="hidden xl:block overflow-x-auto">
-            <table className="w-full">
+            {/* `min-w-full` (min-width: 100%), SIN `table-fixed` ni anchos en
+                px por columna: el navegador arma la tabla con su algoritmo
+                nativo de `table-layout: auto`, que primero mide cuánto necesita
+                cada columna por su contenido y RECIÉN DESPUÉS reparte el
+                sobrante entre TODAS proporcionalmente para llegar al ancho
+                mínimo pedido. Los anchos en px fijos que probé antes sumaban
+                más que el ancho real de la card en pantallas más chicas que la
+                que usé para probar, y esa cuenta que no cerraba colapsaba la
+                columna Nombre a casi nada (superponía su texto con Período).
+                `min-w-full` no puede fallar así: nunca le pide a una columna
+                más de lo que su contenido necesita, solo AGRANDA lo que ya
+                está. `divide-x` marca el límite entre columnas con una línea
+                fina para que no se lean mezcladas. */}
+            <table className="min-w-full border-separate border-spacing-0">
               <thead>
-                <tr className="bg-surface-container">
-                  {/* Paddings chicos y sin ancho reservado de más: son siete columnas
-                      en una tabla que ya vive dentro de una card. Cuanto menos ancho
-                      pida, menos veces aparece el scroll horizontal que tapa la
-                      columna Tutor detrás de la de Acciones, que es sticky. */}
-                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider pl-4 pr-2 py-2">Código</th>
-                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-3 py-2">Nombre</th>
-                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-3 py-2">Período</th>
-                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-3 py-2">Año</th>
-                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-3 py-2">Cód. matriculación</th>
-                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-3 py-2 w-full">Tutor</th>
-                  {/* Sticky a la derecha: la tabla scrollea en horizontal y esta
-                      columna, que es la que tiene el menú de la comisión (asignar
-                      tutor, dar de baja), quedaba fuera de la vista con el ancho
-                      típico de pantalla. Anclada, siempre está a mano. */}
-                  <th className="sticky right-0 z-10 bg-surface-container text-right text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Acciones</th>
+                <tr className="bg-surface-container divide-x divide-outline-variant/30">
+                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider pl-4 pr-5 py-2 whitespace-nowrap">Código</th>
+                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-5 py-2 whitespace-nowrap">Nombre</th>
+                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-5 py-2 whitespace-nowrap">Período</th>
+                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-5 py-2 whitespace-nowrap">Año</th>
+                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-5 py-2 whitespace-nowrap">Cód. matriculación</th>
+                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-5 py-2 whitespace-nowrap">Tutor</th>
+                  {/* Sticky a la derecha: guarda contra el caso ANGOSTO real (una
+                      ventana más chica que 1280px sigue mostrando esta tabla si el
+                      usuario hace zoom-out, por ejemplo) donde sí hace falta scroll
+                      horizontal y el menú de acciones no puede quedar fuera de vista. */}
+                  <th className="sticky right-0 z-10 bg-surface-container text-right text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider pl-5 pr-4 py-2 whitespace-nowrap">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/20">
                 {comisiones.map((c) => {
-                  const comExpandida = comisionExpandida === c.id;
                   return (
                     <Fragment key={c.id}>
-                      <tr className="hover:bg-surface-container/50 transition-colors">
-                        <td className="pl-4 pr-2 py-3 whitespace-nowrap">
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              aria-label={comExpandida ? `Ocultar alumnos de ${c.nombre}` : `Ver alumnos de ${c.nombre}`}
-                              aria-expanded={comExpandida}
-                              onClick={() => toggleComision(c.id)}
-                              className="w-6 h-6 rounded-md flex items-center justify-center text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors shrink-0"
-                            >
-                              <Icon name={comExpandida ? 'keyboard_arrow_down' : 'keyboard_arrow_right'} className="text-[18px]" />
-                            </button>
-                            <span className="font-mono text-[12px] text-on-surface-variant bg-surface-100 border border-outline-variant/40 px-2 py-0.5 rounded-md">
-                              {c.codigo ?? '—'}
-                            </span>
-                          </div>
+                      <tr className="divide-x divide-outline-variant/20">
+                        <td className="pl-4 pr-5 py-3 whitespace-nowrap">
+                          <span className="font-mono text-[12px] text-on-surface-variant bg-surface-100 border border-outline-variant/40 px-2 py-0.5 rounded-md">
+                            {c.codigo ?? '—'}
+                          </span>
                         </td>
-                        <td className="px-3 py-3 text-[13px] text-on-surface">
+                        <td className="px-5 py-3 text-[13px] text-on-surface whitespace-nowrap">
                           <span className="inline-flex items-center gap-2">
                             <span>{c.nombre}</span>
                             {c.activa === false && (
-                              <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-outline-variant/40 text-on-surface-variant px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide">
+                              <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-outline-variant/40 text-on-surface-variant px-2 py-0.5 text-[10px] font-medium">
                                 <Icon name="pause_circle" className="text-[12px]" />
                                 Inactiva
                               </span>
                             )}
                           </span>
                         </td>
-                        <td className="px-3 py-3 text-[13px] text-on-surface-variant">{c.periodo ?? '—'}</td>
-                        <td className="px-3 py-3 text-[13px] text-on-surface-variant tabular-nums">{c.anio ?? '—'}</td>
-                        <td className="px-3 py-3 whitespace-nowrap text-[13px] text-on-surface">
+                        <td className="px-5 py-3 text-[13px] text-on-surface-variant whitespace-nowrap">{c.periodo ?? '—'}</td>
+                        <td className="px-5 py-3 text-[13px] text-on-surface-variant tabular-nums whitespace-nowrap">{c.anio ?? '—'}</td>
+                        <td className="px-5 py-3 whitespace-nowrap text-[13px] text-on-surface">
                           {c.codigo_matriculacion || <span className="text-on-surface-variant">—</span>}
                         </td>
                         {/* Docente a cargo: sin él las notas de esta comisión NO se
@@ -361,31 +378,20 @@ export function ComisionesAccordionBody({
                             hasta forzar scroll horizontal, y ese scroll dejaba esta
                             misma columna tapada por la de Acciones, que está anclada.
                             Los nombres están en "Ver detalle". */}
-                        <td className="px-3 py-3 whitespace-nowrap text-[13px]">
+                        <td className="px-5 py-3 whitespace-nowrap text-[13px]">
                           {tutoresDe(c).length ? (
                             <span className="text-on-surface">{resumenTutores(tutoresDe(c))}</span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-error">
-                              <Icon name="person_off" className="text-[14px]" />
-                              {resumenTutores(tutoresDe(c))}
-                            </span>
+                            <span className="text-error">{resumenTutores(tutoresDe(c))}</span>
                           )}
                         </td>
-                        <td className="sticky right-0 z-10 bg-surface px-3 py-3 text-right">
+                        <td className="sticky right-0 z-10 bg-white pl-5 pr-4 py-3 text-right whitespace-nowrap">
                           <ActionMenu
                             ariaLabel={`Acciones de ${c.nombre}`}
-                            items={accionesComision(c, comExpandida)}
+                            items={accionesComision(c)}
                           />
                         </td>
                       </tr>
-                      {/* El panel de alumnos NO va acá dentro. Estaba en un
-                          <td colSpan={7}> de esta tabla, que vive en un
-                          contenedor con `overflow-x-auto`: heredaba el ancho de
-                          las 7 columnas y quedaba arrastrado por el scroll
-                          horizontal, así que con muchos inscriptos los botones
-                          ("Inscribir alumno") y la última columna de cada fila
-                          se salían de la vista. Ahora se renderiza DEBAJO de la
-                          tabla, fuera del scroll, donde tiene el ancho completo. */}
                     </Fragment>
                   );
                 })}
@@ -393,44 +399,18 @@ export function ComisionesAccordionBody({
             </table>
           </div>
 
-          {/* Alumnos de la comisión expandida, FUERA del scroll horizontal de la
-              tabla. Solo hay una expandida a la vez, así que no hay ambigüedad
-              sobre a quién pertenece: el encabezado del panel la nombra. */}
-          {(() => {
-            const expandida = comisiones.find((c) => c.id === comisionExpandida);
-            if (!expandida) return null;
-            return (
-              <div className="hidden xl:block border-t border-outline-variant/30">
-                <AlumnosComisionPanel
-                  comisionId={expandida.id}
-                  comisionNombre={expandida.nombre}
-                />
-              </div>
-            );
-          })()}
-
           {/* Cards: mobile y todo lo que esté por debajo de 1280px (ver el comentario
               de la tabla). Muestran los mismos datos que las columnas. */}
           <div className="xl:hidden divide-y divide-outline-variant/20">
             {comisiones.map((c) => {
-              const comExpandida = comisionExpandida === c.id;
               return (
                 <div key={c.id}>
                   <div className="px-8 py-3 flex items-center justify-between gap-3">
-                    <button
-                      type="button"
-                      aria-label={comExpandida ? `Ocultar alumnos de ${c.nombre}` : `Ver alumnos de ${c.nombre}`}
-                      aria-expanded={comExpandida}
-                      onClick={() => toggleComision(c.id)}
-                      className="w-6 h-6 rounded-md flex items-center justify-center text-on-surface-variant hover:bg-surface-container shrink-0"
-                    >
-                      <Icon name={comExpandida ? 'keyboard_arrow_down' : 'keyboard_arrow_right'} className="text-[18px]" />
-                    </button>
                     <div className="min-w-0 flex-1">
                       <p className="text-[13px] font-medium text-on-surface truncate flex items-center gap-2">
                         <span className="truncate">{c.nombre}</span>
                         {c.activa === false && (
-                          <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-outline-variant/40 text-on-surface-variant px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide">
+                          <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-outline-variant/40 text-on-surface-variant px-2 py-0.5 text-[10px] font-medium">
                             <Icon name="pause_circle" className="text-[12px]" />
                             Inactiva
                           </span>
@@ -461,12 +441,9 @@ export function ComisionesAccordionBody({
                     </div>
                     <ActionMenu
                       ariaLabel={`Acciones de ${c.nombre}`}
-                      items={accionesComision(c, comExpandida)}
+                      items={accionesComision(c)}
                     />
                   </div>
-                  {comExpandida && (
-                    <AlumnosComisionPanel comisionId={c.id} comisionNombre={c.nombre} />
-                  )}
                 </div>
               );
             })}
