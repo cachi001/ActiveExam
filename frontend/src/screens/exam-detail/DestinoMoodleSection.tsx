@@ -3,9 +3,9 @@ import { Button, Card, Icon, SectionTitle } from '../../ui/components';
 import { getMoodleTarget, setMoodleTarget, buildMoodleTarget } from '../../lib/examContentAdmin';
 
 const SOFT_INPUT_CLS =
-  'w-full rounded-lg border border-surface-300 bg-white px-3 py-2.5 text-sm shadow-sm ' +
+  'w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm ' +
   'text-on-surface transition-colors hover:border-surface-400 focus:border-surface-500 focus:outline-none ' +
-  'disabled:bg-surface-100 disabled:text-on-surface-variant disabled:border-surface-200 disabled:shadow-none disabled:cursor-not-allowed';
+  'disabled:bg-surface-100 disabled:text-on-surface-variant disabled:border-surface-200 disabled:cursor-not-allowed';
 const SOFT_LABEL_CLS = 'block text-sm font-medium text-on-surface';
 
 export function DestinoMoodleSection({ examenId }: { examenId: string }) {
@@ -121,9 +121,9 @@ export function DestinoMoodleSection({ examenId }: { examenId: string }) {
       {!cargando && !errorCarga && vacio && (
         <div
           role="alert"
-          className="flex items-start gap-2 rounded-lg bg-warning-container/40 px-3 py-2.5 text-label-sm text-on-surface mb-4"
+          className="flex items-center gap-2 rounded-lg border border-warning-200 bg-warning-50 px-3 py-2.5 text-label-sm text-warning-800 mb-4"
         >
-          <Icon name="warning" className="text-[18px] shrink-0 text-warning mt-0.5" fill />
+          <Icon name="warning" className="text-[18px] shrink-0 text-warning-600" fill />
           <span>
             Este examen todavía no tiene destino. Las notas se van a calcular y
             guardar igual, pero no van a salir al campus hasta que cargues el

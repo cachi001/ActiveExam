@@ -135,7 +135,7 @@ export default function MiCuentaCampus() {
       <div
         className={`flex items-start gap-3 rounded border px-4 py-3 text-[13px] ${
           porVencer
-            ? 'border-warning-200/60 bg-warning-container/20 text-on-surface'
+            ? 'border-warning-200 bg-warning-50 text-warning-800'
             : conectada
               ? 'border-success/30 bg-success-container/20 text-on-surface'
               : caida || vencida

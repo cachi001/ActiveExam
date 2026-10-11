@@ -154,7 +154,9 @@ export function SorteoSection({ examenId, materiaId }: Props) {
             para que cada alumno reciba un sorteo distinto.
           </div>
         )}
-        <div className={sinSorteoTodavia ? 'hidden' : 'rounded-xl bg-surface-100 px-4 py-3 flex items-start gap-3'}>
+        {/* El texto y el botón «Editar preguntas» competían en una fila: en un
+            teléfono el párrafo quedaba con 16px de ancho. Apilado abajo de `sm`. */}
+        <div className={sinSorteoTodavia ? 'hidden' : 'rounded-xl bg-surface-100 px-4 py-3 flex flex-col sm:flex-row items-start gap-3'}>
           <div className="flex-1 min-w-0">
           <p className="text-label-md text-on-surface">
             Cada alumno rinde{' '}
@@ -287,8 +289,8 @@ export function SorteoSection({ examenId, materiaId }: Props) {
         )}
 
         {!editando && sorteo.nuevas_en_el_banco > 0 && (
-          <div className="rounded-xl border border-warning/40 bg-warning-container/30 px-4 py-3">
-            <p className="text-label-md text-on-surface">
+          <div className="rounded-xl border border-warning-200 bg-warning-50 px-4 py-3">
+            <p className="text-label-md text-warning-800">
               El banco tiene{' '}
               <strong>
                 {sorteo.nuevas_en_el_banco}{' '}
@@ -296,7 +298,7 @@ export function SorteoSection({ examenId, materiaId }: Props) {
               </strong>{' '}
               que este examen todavía no usa.
             </p>
-            <p className="text-label-sm text-on-surface-variant mt-1">
+            <p className="text-label-sm text-warning-700 mt-1">
               El examen no las incorpora solo: trabaja con una copia congelada, y eso es
               lo que hace que tocar el banco no pueda romperlo mientras se rinde.
             </p>

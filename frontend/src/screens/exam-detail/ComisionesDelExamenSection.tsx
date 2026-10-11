@@ -24,7 +24,7 @@ import {
 import type { Comision } from '../../lib/types';
 
 const SELECT_CLS =
-  'w-full rounded-lg border border-surface-300 bg-white px-3 py-2.5 text-sm shadow-sm ' +
+  'w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm ' +
   'text-on-surface transition-colors hover:border-surface-400 focus:border-surface-500 focus:outline-none ' +
   'disabled:bg-surface-100 disabled:text-on-surface-variant disabled:border-surface-200 disabled:cursor-not-allowed';
 
@@ -164,14 +164,17 @@ export function ComisionesDelExamenSection({ examenId, materiaId, onCambio }: Pr
                     className="text-[18px] shrink-0 text-on-surface-variant"
                   />
                   <div className="flex-1 min-w-0">
+                    {/* La aclaración va en su propia línea: pegada al nombre con
+                        `ml-2` dentro de un contenedor `truncate`, su margen se
+                        escapaba del borde de la pantalla en teléfonos angostos. */}
                     <div className="text-label-md text-on-surface truncate">
                       {item.comision_codigo} · {item.comision_nombre}
-                      {item.es_el_actual && (
-                        <span className="ml-2 text-label-sm text-on-surface-variant">
-                          (el que estás viendo)
-                        </span>
-                      )}
                     </div>
+                    {item.es_el_actual && (
+                      <div className="text-label-sm text-on-surface-variant">
+                        (el que estás viendo)
+                      </div>
+                    )}
                     <div className="text-label-sm text-on-surface-variant truncate">
                       {item.titulo}
                       {item.total_intentos > 0 &&

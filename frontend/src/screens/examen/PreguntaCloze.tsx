@@ -46,7 +46,11 @@ export function PreguntaCloze({ blanks, respuestas, onRespuesta }: Props) {
               <select
                 value={valor}
                 onChange={(e) => onRespuesta(blank.id, e.target.value)}
-                className={`mx-1 px-2 py-0.5 rounded-lg border text-body-md focus:outline-none focus:ring-2 focus:ring-primary transition-colors ${
+                // El ancho del `select` lo fija su opción más larga, así que con
+                // opciones largas se iba de la pantalla: medido en un teléfono,
+                // 341px de desplegable contra 382px de viewport, arrancando desde
+                // la indentación del código. `max-w-full` lo ata a su contenedor.
+                className={`mx-1 px-2 py-0.5 rounded-lg border text-body-md max-w-full focus:outline-none focus:ring-2 focus:ring-primary transition-colors ${
                   seleccionado
                     ? 'border-primary bg-primary-fixed/30 text-on-surface'
                     : 'border-outline-variant bg-surface text-on-surface'
@@ -65,7 +69,7 @@ export function PreguntaCloze({ blanks, respuestas, onRespuesta }: Props) {
                 value={valor}
                 onChange={(e) => onRespuesta(blank.id, e.target.value)}
                 placeholder="Respuesta"
-                className={`mx-1 px-2 py-0.5 rounded-lg border text-body-md focus:outline-none focus:ring-2 focus:ring-primary transition-colors w-32 ${
+                className={`mx-1 px-2 py-0.5 rounded-lg border text-body-md focus:outline-none focus:ring-2 focus:ring-primary transition-colors w-32 max-w-full ${
                   seleccionado
                     ? 'border-primary bg-primary-fixed/30 text-on-surface'
                     : 'border-outline-variant bg-surface text-on-surface'

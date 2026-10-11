@@ -80,6 +80,13 @@ export default function MateriasComisiones() {
   // backend lo enforcea (`gestionar_estructura`); acá solo ocultamos los botones.
   const roles = useAuth((s) => s.principal?.roles) ?? [];
   const puedeEditarEstructura = tieneCapacidad(roles, 'gestionar_estructura');
+  // GET /exam-content/materias solo resuelve `coordinadores`/`profesores` para
+  // admin_sistema y coordinador (taking_router.py: ahorra dos queries por
+  // materia a quien no los necesita). Tutor y profesor SIEMPRE reciben `[]`
+  // ahí, así que para ellos `sinResponsable` daría un falso "sin nadie
+  // asignado" aunque la materia tenga coordinador y profesor. El aviso (banner
+  // y resaltado en rojo) solo se muestra a quien tiene el dato real.
+  const puedeVerResponsables = roles.includes('admin_sistema') || roles.includes('coordinador');
 
   // ── Materias ──────────────────────────────────────────────────────────────
   const [materias, setMaterias] = useState<Materia[]>([]);
@@ -112,13 +119,6 @@ export default function MateriasComisiones() {
   // D16: por materia, el motivo por el que sus comisiones no cargaron. null/ausente
   // = no hubo error. Distinto de una lista vacia (materia sin comisiones).
   const [errorComisiones, setErrorComisiones] = useState<Record<string, string | null>>({});
-
-  // ── Comisión expandida (para ver/gestionar alumnos inscriptos) ─────────────
-  const [comisionExpandida, setComisionExpandida] = useState<string | null>(null);
-
-  function toggleComision(comisionId: string) {
-    setComisionExpandida((prev) => (prev === comisionId ? null : comisionId));
-  }
 
   // ── Formulario de materia ─────────────────────────────────────────────────
   const [formMateria, setFormMateria] = useState<FormMateria | null>(null);
@@ -496,11 +496,19 @@ export default function MateriasComisiones() {
     >
       <div className="space-y-lg animate-in fade-in duration-500">
         <RefreshBar
-          texto="Materias y comisiones"
           lastUpdatedAt={lastUpdatedAt}
           cargando={cargandoMaterias}
           onActualizar={() => void cargarMaterias()}
         />
+
+        {/* Alerta de página completa, no adentro de la columna angosta de
+            comisiones: ahí quedaba apretada contra la tabla y rompía el layout. */}
+        {(() => {
+          const m = materias.find((x) => x.id === expandida);
+          return m && puedeVerResponsables && sinResponsable(m) ? (
+            <AvisoSinResponsable sinResponsableDeMateria nombre={m.nombre} />
+          ) : null;
+        })()}
 
         {formMateria && (
           <MateriaFormPanel
@@ -540,7 +548,7 @@ export default function MateriasComisiones() {
           // que ahí conviene el 1 a 2 y que el nombre de la materia se lea entero.
           <div className="grid lg:grid-cols-3 xl:grid-cols-4 gap-lg items-start">
             {/* Columna izquierda: lista de materias (seleccionables). */}
-            <div className="lg:col-span-1 rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden">
+            <div className="lg:col-span-1 rounded-xl border border-outline-variant/60 bg-surface-container-lowest overflow-hidden">
               <div className="px-4 py-3 border-b border-outline-variant/40 flex items-center gap-2 flex-wrap">
                 <Icon name="school" className="text-[16px] text-on-surface-variant shrink-0" />
                 <h2 className="text-[13px] font-semibold text-on-surface">
@@ -549,23 +557,31 @@ export default function MateriasComisiones() {
                     ({materiasVisibles.length})
                   </span>
                 </h2>
-                <label className="ml-auto flex items-center gap-1.5 text-[11px] text-on-surface-variant">
-                  <span className="sr-only">Filtrar materias por estado</span>
-                  <select
-                    aria-label="Filtrar materias por estado"
-                    value={estadoMaterias}
-                    onChange={(e) => setEstadoMaterias(e.target.value as EstadoBajaFiltro)}
-                    className="rounded-md border border-outline-variant/60 bg-white px-2 py-1 text-[11px] text-on-surface focus:border-primary focus:outline-none"
-                  >
-                    {OPCIONES_ESTADO_BAJA.map((o) => (
-                      <option key={o.valor} value={o.valor}>{o.label}</option>
-                    ))}
-                  </select>
-                </label>
+                {/* La baja lógica es una acción de `gestionar_estructura`: el
+                    tutor no da de baja ni reactiva nada, así que filtrar por
+                    ese estado no le sirve — solo agrega un control que no puede
+                    usar para nada. */}
+                {puedeEditarEstructura && (
+                  <label className="ml-auto flex items-center gap-1.5 text-[11px] text-on-surface-variant">
+                    <span className="sr-only">Filtrar materias por estado</span>
+                    <select
+                      aria-label="Filtrar materias por estado"
+                      value={estadoMaterias}
+                      onChange={(e) => setEstadoMaterias(e.target.value as EstadoBajaFiltro)}
+                      className="rounded-md border border-outline-variant/60 bg-white px-2 py-1 text-[11px] text-on-surface focus:border-primary focus:outline-none"
+                    >
+                      {OPCIONES_ESTADO_BAJA.map((o) => (
+                        <option key={o.valor} value={o.valor}>{o.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
               </div>
               {/* Que haya materias dadas de baja escondidas tiene que decirse: si
-                  no, quien busca una que dio de baja concluye que se borró. */}
-              {estadoMaterias === 'activa' && materiasDeBaja > 0 && (
+                  no, quien busca una que dio de baja concluye que se borró.
+                  Mismo gate que el selector: sin `gestionar_estructura` no hay
+                  nada que hacer con una materia dada de baja. */}
+              {puedeEditarEstructura && estadoMaterias === 'activa' && materiasDeBaja > 0 && (
                 <button
                   type="button"
                   onClick={() => setEstadoMaterias('inactiva')}
@@ -587,19 +603,33 @@ export default function MateriasComisiones() {
                       ? 'No hay materias dadas de baja.'
                       : 'Ninguna materia coincide con este filtro.'}
                   </p>
-                  <Button variant="ghost" size="sm" onClick={() => setEstadoMaterias('todas')}>
-                    Ver todas
-                  </Button>
+                  {puedeEditarEstructura && (
+                    <Button variant="ghost" size="sm" onClick={() => setEstadoMaterias('todas')}>
+                      Ver todas
+                    </Button>
+                  )}
                 </div>
               )}
               <div className="divide-y divide-outline-variant/30">
                 {materiasVisibles.map((m) => {
                   const sel = expandida === m.id;
+                  // c-78 §18.4: sin nadie a cargo se ve de un vistazo en la lista, sin
+                  // abrir materia por materia. El rojo reemplaza al celeste de
+                  // seleccionada en vez de competir con él — clarito de por sí, más
+                  // fuerte si además está elegida — así una sola fila dice ambas cosas.
+                  const faltaResponsable = puedeVerResponsables && sinResponsable(m);
                   return (
                     <div
                       key={m.id}
+                      title={faltaResponsable ? 'Sin profesor ni coordinador asignado' : undefined}
                       className={`flex items-center gap-3 px-4 py-3 transition-colors group ${
-                        sel ? 'bg-primary-fixed/50' : 'hover:bg-surface-container-low'
+                        faltaResponsable
+                          ? sel
+                            ? 'bg-error-container/70'
+                            : 'bg-error-container/25 hover:bg-error-container/40'
+                          : sel
+                            ? 'bg-primary-fixed/50'
+                            : 'hover:bg-surface-container-low'
                       }`}
                     >
                       <button
@@ -607,31 +637,18 @@ export default function MateriasComisiones() {
                         onClick={() => void seleccionarMateria(m.id)}
                         className="flex-1 min-w-0 text-left"
                       >
-                        <p className={`text-[13px] font-semibold truncate flex items-center gap-2 ${sel ? 'text-primary' : 'text-on-surface'}`}>
-                          <span className="truncate">{m.nombre}</span>
-                          {m.activa === false && (
-                            <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-outline-variant/40 text-on-surface-variant px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide">
+                        <p className={`text-[13px] font-semibold truncate ${sel && !faltaResponsable ? 'text-primary' : 'text-on-surface'}`}>
+                          {m.nombre}
+                        </p>
+                        <p className="text-[11px] font-mono text-on-surface-variant mt-0.5 truncate">{m.codigo}</p>
+                        {m.activa === false && (
+                          <div className="mt-1 flex flex-wrap items-center gap-1">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-outline-variant/40 text-on-surface-variant px-2 py-0.5 text-[10px] font-medium">
                               <Icon name="pause_circle" className="text-[12px]" />
                               Inactiva
                             </span>
-                          )}
-                        </p>
-                        {/* c-78 §18.4: sin nadie a cargo se ve de un vistazo en la
-                            lista, sin abrir materia por materia. Va en la segunda
-                            línea junto al código: arriba le comía el ancho al
-                            nombre, que es lo que la persona viene a leer. */}
-                        <p className="text-[11px] font-mono text-on-surface-variant mt-0.5 flex items-center gap-2">
-                          <span className="truncate">{m.codigo}</span>
-                          {sinResponsable(m) && (
-                            <span
-                              title="Esta materia no tiene profesor ni coordinador asignado."
-                              className="shrink-0 inline-flex items-center gap-1 rounded-full bg-warning-container text-on-surface px-2 py-0.5 text-[10px] font-sans font-medium uppercase tracking-wide"
-                            >
-                              <Icon name="person_off" className="text-[12px]" />
-                              Sin responsable
-                            </span>
-                          )}
-                        </p>
+                          </div>
+                        )}
                       </button>
                       {puedeEditarEstructura && (
                       <ActionMenu
@@ -659,7 +676,7 @@ export default function MateriasComisiones() {
             </div>
 
             {/* Columna derecha: comisiones de la materia seleccionada. */}
-            <div className="lg:col-span-2 xl:col-span-3 rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden min-w-0">
+            <div className="lg:col-span-2 xl:col-span-3 rounded-xl border border-outline-variant/60 bg-surface-container-lowest overflow-hidden min-w-0">
               {(() => {
                 const m = materias.find((x) => x.id === expandida);
                 if (!m) {
@@ -678,7 +695,7 @@ export default function MateriasComisiones() {
                 const comisionesDeBaja = contarDeBaja(comisionesDeLaMateria);
                 return (
                   <>
-                    <div className="px-4 py-3 border-b border-outline-variant/40 flex items-center justify-between gap-2">
+                    <div className="px-4 py-3 border-b border-outline-variant/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <div className="min-w-0">
                         {/* Pliega en vez de truncar: es el título que dice de qué
                             materia son las comisiones que se están viendo, y cortado
@@ -686,35 +703,43 @@ export default function MateriasComisiones() {
                         <h2 className="text-[13px] font-semibold text-on-surface">
                           Comisiones de {m.nombre}
                         </h2>
-                        <p className="text-[11px] text-on-surface-variant">
-                          {comisionesVisibles.length} comisión(es)
+                        <p className="text-[13px] text-on-surface-variant">
+                          <span className="font-medium text-on-surface">{comisionesVisibles.length}</span> comisión(es)
                           {m.coordinadores && m.coordinadores.length > 0
-                            ? ` · Coordina: ${m.coordinadores.map((c) => c.nombre).join(', ')}`
+                            ? <> · Coordinador: <span className="font-medium text-on-surface">{m.coordinadores.map((c) => c.nombre).join(', ')}</span></>
                             : ''}
                           {m.profesores && m.profesores.length > 0
-                            ? ` · Profesor: ${m.profesores.map((c) => c.nombre).join(', ')}`
+                            ? <> · Profesor: <span className="font-medium text-on-surface">{m.profesores.map((c) => c.nombre).join(', ')}</span></>
                             : ''}
                         </p>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <select
-                          aria-label="Filtrar comisiones por estado"
-                          value={estadoComisiones}
-                          onChange={(e) => setEstadoComisiones(e.target.value as EstadoBajaFiltro)}
-                          className="rounded-md border border-outline-variant/60 bg-white px-2 py-1 text-[11px] text-on-surface focus:border-primary focus:outline-none"
-                        >
-                          {OPCIONES_ESTADO_BAJA.map((o) => (
-                            <option key={o.valor} value={o.valor}>{o.label}</option>
-                          ))}
-                        </select>
+                      {/* `shrink-0` + `flex-wrap`: el filtro y el botón no se
+                          encogen, así que en un teléfono angosto se pasaban de la
+                          pantalla. Ahora bajan de línea en vez de desbordar. */}
+                      <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                        {/* Mismo criterio que el filtro de materias: sin
+                            `gestionar_estructura` no hay baja/reactivación que
+                            hacer, así que el filtro por estado no aporta nada. */}
                         {puedeEditarEstructura && (
-                          <Button variant="outline" size="sm" icon="add" onClick={() => abrirCrearComision(m.id)}>
+                          <select
+                            aria-label="Filtrar comisiones por estado"
+                            value={estadoComisiones}
+                            onChange={(e) => setEstadoComisiones(e.target.value as EstadoBajaFiltro)}
+                            className="rounded-md border border-outline-variant/60 bg-white px-2 py-1 text-[11px] text-on-surface focus:border-primary focus:outline-none"
+                          >
+                            {OPCIONES_ESTADO_BAJA.map((o) => (
+                              <option key={o.valor} value={o.valor}>{o.label}</option>
+                            ))}
+                          </select>
+                        )}
+                        {puedeEditarEstructura && (
+                          <Button size="sm" icon="add" onClick={() => abrirCrearComision(m.id)}>
                             Nueva comisión
                           </Button>
                         )}
                       </div>
                     </div>
-                    {estadoComisiones === 'activa' && comisionesDeBaja > 0 && (
+                    {puedeEditarEstructura && estadoComisiones === 'activa' && comisionesDeBaja > 0 && (
                       <button
                         type="button"
                         onClick={() => setEstadoComisiones('inactiva')}
@@ -727,15 +752,6 @@ export default function MateriasComisiones() {
                           : 'comisiones dadas de baja'}
                         . Verlas
                       </button>
-                    )}
-                    {/* c-78 §18.4: el aviso completo, con qué falta y por qué
-                        importa, va donde se está trabajando la materia. Las
-                        comisiones sin tutor ya se marcan una por una en la
-                        columna "Tutor" de la tabla de abajo. */}
-                    {sinResponsable(m) && (
-                      <div className="px-4 pt-3">
-                        <AvisoSinResponsable sinResponsableDeMateria nombre={m.nombre} />
-                      </div>
                     )}
                     {errorComisiones[m.id] ? (
                       /* D16: la carga de comisiones FALLÓ. No se dibuja como
@@ -768,8 +784,6 @@ export default function MateriasComisiones() {
                       abrirCrearComision={abrirCrearComision}
                       abrirEditarComision={abrirEditarComision}
                       onToggleActivaComision={(c) => void toggleActivaComision(m.id, c)}
-                      comisionExpandida={comisionExpandida}
-                      toggleComision={toggleComision}
                     />
                     )}
                   </>

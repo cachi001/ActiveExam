@@ -108,8 +108,13 @@ export default function ExamDetail() {
           Volver a la lista
         </Button>
 
-        {/* Header stats — tarjetas consistentes */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-md">
+        {/* Header stats — tarjetas consistentes.
+            Una sola columna en teléfonos angostos: con dos, el ícono de 44px más
+            el relleno dejaba 22px para la etiqueta y "Preguntas" se cortaba. */}
+        {/* Flex y no grid: con `grid-cols-1` el navegador seguía calculando dos
+            columnas desparejas (117px y 217px) y la tarjeta de Preguntas quedaba
+            con 7px para su etiqueta. Apilado explícito, sin sorpresas. */}
+        <div className="flex flex-col sm:flex-row gap-md [&>*]:min-w-0 [&>*]:flex-1">
           <StatCard icon="quiz" label="Preguntas" loading={cargando}>
             <p className="font-headline text-display-sm text-on-surface tabular-nums leading-tight mt-0.5">
               {examen?.cantidad_preguntas ?? 0}

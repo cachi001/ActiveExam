@@ -31,7 +31,7 @@ const VARIANTE_CONFIG = {
   },
   default: {
     icon: 'warning',
-    iconWrap: 'bg-warning-container text-warning',
+    iconWrap: 'bg-warning-100 text-warning-800',
     botonVariant: 'primary' as const,
   },
   // Cerrar sesión: tono rojo, pero con icono de logout (no el triángulo de advertencia).

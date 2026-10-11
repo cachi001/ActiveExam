@@ -187,7 +187,7 @@ export default function SeccionProctoring() {
               onChange={(e) => setEstado((p) => ({ ...p, umbral: Number(e.target.value) }))}
               aria-label="Umbral de cola de revisión"
               aria-valuetext={`score mayor o igual a ${estado.umbral} puntos entra a la cola de revisión`}
-              className="ae-slider w-full appearance-none bg-transparent cursor-pointer"
+              className="ae-slider h-6 w-full appearance-none bg-transparent cursor-pointer"
               style={{
                 background: `linear-gradient(to right, #2563eb 0%, #2563eb ${umbralPct}%, #cbd5e1 ${umbralPct}%, #cbd5e1 100%)`,
               }}
@@ -235,7 +235,7 @@ export default function SeccionProctoring() {
           </div>
           <div className="space-y-2">
             {estado.pausasHabilitadas && (
-              <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-outline-variant/60 bg-surface-container-low/50">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 rounded-xl border border-outline-variant/60 bg-surface-container-low/50">
                 <div className="min-w-0">
                   <p className="text-label-md font-semibold text-on-surface">Duración máxima de la pausa</p>
                   <p className="text-[11px] text-on-surface-variant leading-snug mt-0.5">
@@ -259,7 +259,7 @@ export default function SeccionProctoring() {
               </div>
             )}
             {estado.pausasHabilitadas && (
-              <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-outline-variant/60 bg-surface-container-low/50">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 rounded-xl border border-outline-variant/60 bg-surface-container-low/50">
                 <div className="min-w-0">
                   <p className="text-label-md font-semibold text-on-surface">Pausas máximas por sesión</p>
                   <p className="text-[11px] text-on-surface-variant leading-snug mt-0.5">
@@ -298,7 +298,7 @@ export default function SeccionProctoring() {
         <SectionTitle sub="Cuántos días se conserva la IMAGEN de cada captura antes de poder purgarla">
           Retención de capturas
         </SectionTitle>
-        <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-outline-variant/60 bg-surface-container-low/50">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 rounded-xl border border-outline-variant/60 bg-surface-container-low/50">
           <div className="min-w-0">
             <p className="text-label-md font-semibold text-on-surface">Días de retención</p>
             <p className="text-[11px] text-on-surface-variant leading-snug mt-0.5">

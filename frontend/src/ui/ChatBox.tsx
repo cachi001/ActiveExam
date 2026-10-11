@@ -212,7 +212,11 @@ export function ChatBox({
                     ? 'Escribir mensaje…'
                     : 'Canal no disponible'
               }
-              className="flex-1 h-10 px-sm py-base text-label-md rounded-xl border border-outline-variant bg-surface-container-lowest focus:border-primary-container outline-none disabled:opacity-50"
+              // `min-w-0`: un input trae un ancho intrínseco (~170px) que `flex-1`
+              // no achica solo, así que en pantallas de 320px estiraba la tarjeta
+              // del chat 29px más que su contenedor y el examen quedaba con scroll
+              // horizontal.
+              className="flex-1 min-w-0 h-10 px-sm py-base text-label-md rounded-xl border border-outline-variant bg-surface-container-lowest focus:border-primary-container outline-none disabled:opacity-50"
             />
             <Button
               onClick={() => void enviar()}

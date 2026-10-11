@@ -269,12 +269,18 @@ export function useDetectionHarness() {
   // (al tocar un umbral, por ejemplo): sin esto, cambiar cualquier config
   // descalibraba la cámara en silencio y la medición dejaba de valer.
   const gazeBaselineRef = useRef<{ x: number; y: number } | null>(null);
+  // Rango de 4 esquinas (junto al baseline): reemplaza el factor vertical fijo
+  // de StateTransitionRules por el medido. `null` si la calibración no dejó
+  // rango (no debería pasar desde este panel, que siempre mide las 4 esquinas).
+  const gazeRangoRef = useRef<{ rangoX: [number, number]; rangoY: [number, number] } | null>(null);
 
   // ------ Crear pipeline con config actual ------
   const createPipeline = useCallback(
     (engine: VisionEngine, sink: EventSink, cfg: TransitionConfig) => {
       const rules = new StateTransitionRules(cfg);
-      if (gazeBaselineRef.current) rules.calibrarGaze(gazeBaselineRef.current);
+      if (gazeBaselineRef.current) {
+        rules.calibrarGaze(gazeBaselineRef.current, gazeRangoRef.current ?? undefined);
+      }
       return new VisionPipeline({ engine, sink, rules });
     },
     [],
@@ -282,8 +288,12 @@ export function useDetectionHarness() {
 
   /** Fija (o limpia con `null`) el baseline y lo aplica al pipeline vigente. */
   const aplicarCalibracionGaze = useCallback(
-    (baseline: { x: number; y: number } | null) => {
+    (
+      baseline: { x: number; y: number } | null,
+      rango?: { rangoX: [number, number]; rangoY: [number, number] },
+    ) => {
       gazeBaselineRef.current = baseline;
+      gazeRangoRef.current = baseline ? (rango ?? null) : null;
       if (engineRef.current && sinkRef.current) {
         pipelineRef.current = createPipeline(engineRef.current, sinkRef.current, configRef.current);
       }

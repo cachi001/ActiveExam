@@ -402,6 +402,13 @@ export default function Examen() {
     }
     setConfirmandoEntrega(false);
     detener();
+    // La cámara se apaga ACÁ, explícitamente, y no solo en el cleanup del efecto:
+    // que se apague dependía de que React desmontara la pantalla, y para algo que
+    // filma a una persona ese no puede ser el único mecanismo. `detener()` corta el
+    // análisis y finaliza la sesión, pero no toca el stream. Idempotente: parar una
+    // pista ya parada no hace nada, así que el cleanup del desmontaje sigue igual.
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    if (videoRef.current) videoRef.current.srcObject = null;
     navigate('/cierre');
   };
 
@@ -555,7 +562,11 @@ export default function Examen() {
 
             {/* Canal del tutor + supervisión en vivo. Si el chat está apagado, la
                 supervisión ocupa todo el ancho (sin hueco). */}
-            <div className={`grid gap-md items-start ${chatHabilitado ? 'md:grid-cols-2' : 'grid-cols-1'}`}>
+            {/* `[&>*]:min-w-0`: los items de un grid arrancan con `min-width:auto`,
+                así que se estiran hasta su ancho mínimo intrínseco aunque la
+                columna sea más angosta. En 320px estas dos tarjetas medían 309px
+                dentro de una columna de 280 y sacaban el examen de la pantalla. */}
+            <div className={`grid gap-md items-start [&>*]:min-w-0 ${chatHabilitado ? 'md:grid-cols-2' : 'grid-cols-1'}`}>
               {chatHabilitado && (
                 <ChatBox
                   sessionId={sessionId}

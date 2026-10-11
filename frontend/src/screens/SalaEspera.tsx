@@ -34,7 +34,7 @@ export default function SalaEspera() {
           <Icon name="how_to_reg" className="text-[40px]" fill />
         </div>
         <div className="space-y-base">
-          <h2 className="font-headline text-headline-lg text-on-surface">¡Identidad confirmada!</h2>
+          <h2 className="font-headline text-headline-md sm:text-headline-lg text-on-surface">¡Identidad confirmada!</h2>
           <p className="text-body-md text-on-surface-variant">
             Tu identidad quedó confirmada de forma segura. Revisá los datos del examen
             y comenzá cuando estés listo.

@@ -46,8 +46,8 @@ export interface ConfigForm {
 // tocar); BLOQUEADO (disabled) = fondo gris claro + texto atenuado + cursor
 // not-allowed (se nota que NO se puede cambiar). Focus gris (sin azul).
 const INPUT_CLS =
-  'w-full rounded-lg border border-surface-300 bg-white px-4 py-2.5 text-body-md text-on-surface placeholder:text-on-surface-variant shadow-sm hover:border-surface-400 focus:border-surface-500 focus:outline-none transition-colors ' +
-  'disabled:bg-surface-100 disabled:text-on-surface-variant disabled:border-surface-200 disabled:shadow-none disabled:cursor-not-allowed';
+  'w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm text-on-surface placeholder:text-on-surface-variant hover:border-surface-400 focus:border-surface-500 focus:outline-none transition-colors ' +
+  'disabled:bg-surface-100 disabled:text-on-surface-variant disabled:border-surface-200 disabled:cursor-not-allowed';
 const LABEL_CLS = 'block text-label-md font-semibold text-on-surface mb-1.5';
 
 function configToForm(cfg: ExamConfig): ConfigForm {
@@ -303,8 +303,8 @@ export function ConfiguracionExamenSection({
 
       {/* Aviso ANTES de confirmar: la acción no se puede deshacer. */}
       {confirmarPublicar && (
-        <div className="mb-lg rounded-lg border border-warning bg-warning-container/40 px-4 py-3">
-          <p className="text-label-md font-semibold text-on-surface">
+        <div className="mb-lg rounded-lg border border-warning-200 bg-warning-50 px-4 py-3">
+          <p className="text-label-md font-semibold text-warning-800">
             Esto no se puede deshacer
           </p>
           <p className="text-label-sm text-on-surface-variant mt-0.5">
@@ -345,8 +345,8 @@ export function ConfiguracionExamenSection({
       {!cargando && !errorCarga && form && (
         <div className="space-y-6">
           {bloqueada && (
-            <div className="flex items-start gap-sm text-on-surface bg-warning-container/50 border border-warning/40 rounded-lg px-4 py-3 text-label-sm">
-              <Icon name="lock" className="text-[18px] shrink-0 text-warning" fill />
+            <div className="flex items-start gap-sm text-warning-800 bg-warning-50 border border-warning-200 rounded-lg px-4 py-3 text-label-sm">
+              <Icon name="lock" className="text-[18px] shrink-0 text-warning-600" fill />
               <span>
                 Este examen ya tiene intentos finalizados. La mecánica y la nota
                 (tiempo, apertura, notas, mezclar) quedaron <strong>congeladas</strong>
@@ -371,49 +371,61 @@ export function ConfiguracionExamenSection({
             </div>
           )}
 
-          <div>
-            <label className={LABEL_CLS} htmlFor="cfg-tiempo">Tiempo límite (minutos)</label>
-            <input
-              id="cfg-tiempo"
-              type="number"
-              min={1}
-              inputMode="numeric"
-              className={INPUT_CLS}
-              placeholder="Ej. 60"
-              value={form.tiempoLimiteMin}
-              disabled={form.sinLimite || guardando || bloqueada}
-              onChange={(e) => update('tiempoLimiteMin', e.target.value)}
-            />
-            <label className="mt-2 inline-flex items-center gap-sm cursor-pointer select-none text-label-md text-on-surface-variant">
+          <div className="grid sm:grid-cols-2 gap-5">
+            <div>
+              <label className={LABEL_CLS} htmlFor="cfg-tiempo">Tiempo límite (minutos)</label>
               <input
-                type="checkbox"
-                className="w-4 h-4 accent-primary"
-                checked={form.sinLimite}
-                disabled={guardando || bloqueada}
-                onChange={(e) => update('sinLimite', e.target.checked)}
+                id="cfg-tiempo"
+                type="number"
+                min={1}
+                inputMode="numeric"
+                className={INPUT_CLS}
+                placeholder="Ej. 60"
+                value={form.tiempoLimiteMin}
+                disabled={form.sinLimite || guardando || bloqueada}
+                onChange={(e) => update('tiempoLimiteMin', e.target.value)}
               />
-              Sin límite de tiempo
-            </label>
-          </div>
+              <div className="mt-2 flex items-center gap-sm">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={form.sinLimite}
+                  aria-label="Sin límite de tiempo"
+                  disabled={guardando || bloqueada}
+                  onClick={() => update('sinLimite', !form.sinLimite)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                    form.sinLimite ? 'bg-primary' : 'bg-surface-300'
+                  } disabled:opacity-50`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      form.sinLimite ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+                <span className="text-label-md text-on-surface-variant">Sin límite de tiempo</span>
+              </div>
+            </div>
 
-          <div>
-            <label className={LABEL_CLS} htmlFor="cfg-intentos">Intentos permitidos</label>
-            <input
-              id="cfg-intentos"
-              type="number"
-              // Bloqueado: solo se pueden AUMENTAR (min = los intentos vigentes).
-              min={bloqueada ? Number(original?.intentosPermitidos ?? 1) : 1}
-              inputMode="numeric"
-              className={INPUT_CLS}
-              value={form.intentosPermitidos}
-              disabled={guardando}
-              onChange={(e) => update('intentosPermitidos', e.target.value)}
-            />
-            {bloqueada && (
-              <p className="mt-1.5 text-label-sm text-on-surface-variant">
-                Con el examen ya rendido, los intentos solo se pueden <strong>aumentar</strong>.
-              </p>
-            )}
+            <div>
+              <label className={LABEL_CLS} htmlFor="cfg-intentos">Intentos permitidos</label>
+              <input
+                id="cfg-intentos"
+                type="number"
+                // Bloqueado: solo se pueden AUMENTAR (min = los intentos vigentes).
+                min={bloqueada ? Number(original?.intentosPermitidos ?? 1) : 1}
+                inputMode="numeric"
+                className={INPUT_CLS}
+                value={form.intentosPermitidos}
+                disabled={guardando}
+                onChange={(e) => update('intentosPermitidos', e.target.value)}
+              />
+              {bloqueada && (
+                <p className="mt-1.5 text-label-sm text-on-surface-variant">
+                  Con el examen ya rendido, los intentos solo se pueden <strong>aumentar</strong>.
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="grid sm:grid-cols-2 gap-5">

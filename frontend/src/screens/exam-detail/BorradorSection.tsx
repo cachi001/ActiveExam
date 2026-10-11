@@ -126,8 +126,8 @@ export function BorradorSection({ examenId, titulo, borrador, onHabilitado }: Pr
       </SectionTitle>
 
       <div className="space-y-4">
-        <div className="rounded-xl border border-warning/40 bg-warning-container/30 px-4 py-3">
-          <p className="text-label-md text-on-surface">
+        <div className="rounded-xl border border-warning-200 bg-warning-50 px-4 py-3">
+          <p className="text-label-md text-warning-800">
             A los alumnos no les aparece en su lista y no lo pueden rendir, aunque tengan
             el link.
           </p>
@@ -138,7 +138,7 @@ export function BorradorSection({ examenId, titulo, borrador, onHabilitado }: Pr
               como alumno de su propia comisión. Prometer algo que la aplicación
               rechaza es peor que no ofrecerlo. Lo que SÍ puede hacer es revisar el
               contenido, que es para lo que se usa el borrador. */}
-          <p className="text-label-md text-on-surface-variant mt-2">
+          <p className="text-label-sm text-warning-700 mt-2">
             Mientras tanto podés revisarlo: más abajo están{' '}
             <strong>todas las preguntas del examen</strong>, con los huecos como los ve
             el alumno, y la configuración de fechas, intentos y escala de nota.
@@ -146,7 +146,7 @@ export function BorradorSection({ examenId, titulo, borrador, onHabilitado }: Pr
         </div>
 
         <div className="flex items-start gap-2 text-label-sm text-on-surface-variant">
-          <Icon name="info" className="text-[18px] shrink-0 mt-0.5" />
+          <Icon name="info" className="text-[18px] shrink-0 mt-0.5 text-primary" />
           <p>
             Lo podés volver a esconder mientras no lo rinda nadie. Desde el primer
             alumno que entre ya no, porque le sacaría el examen de abajo: ahí el

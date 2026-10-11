@@ -195,7 +195,7 @@ export default function AlumnoDashboard() {
               </h2>
               <button
                 onClick={() => navigate('/alumno/mis-examenes')}
-                className="text-[13px] text-primary hover:underline"
+                className="text-[13px] text-primary hover:underline py-2 -my-2 pl-2"
               >
                 Ver todos
               </button>
@@ -225,7 +225,11 @@ export default function AlumnoDashboard() {
           {/* Acceso rápido — columna secundaria (derecha, ~30%) */}
           <section className="w-full lg:w-64 xl:w-72 shrink-0">
             <h2 className="text-[16px] font-semibold text-on-surface mb-md">Acceso rápido</h2>
-            <div className="flex flex-row lg:flex-col gap-md">
+            {/* En un teléfono estas tres tarjetas iban en FILA y no entraban: la
+                página terminaba midiendo 613px de ancho contra un viewport de 320,
+                o sea scroll horizontal y media tarjeta afuera de la pantalla.
+                Apiladas abajo de `sm`; en fila recién cuando hay lugar. */}
+            <div className="flex flex-col sm:flex-row lg:flex-col gap-md">
               <QuickAccessCard icon="menu_book" title="Mis materias" description="Explorar y inscribirse" onClick={() => navigate('/alumno/materias')} />
               <QuickAccessCard icon="assignment" title="Mis exámenes" description="Ver inscripciones y estado" onClick={() => navigate('/alumno/mis-examenes')} />
               <QuickAccessCard icon="manage_accounts" title="Mi perfil" description="Consentimiento y biometría" onClick={() => navigate('/alumno/perfil')} />
@@ -258,12 +262,15 @@ export default function AlumnoDashboard() {
  *  del propio alumno (no es un KPI ni admin). */
 function ContadorPersonal({ icon, label, value }: { icon: string; label: string; value: number }) {
   return (
-    <div className="flex items-center gap-4 px-5 py-5 bg-white border border-surface-200 rounded-lg">
+    // En 320px el relleno y el ícono dejaban 38px para el texto, y ahí no entra
+    // ni la palabra "disponibles": se cortaba. Menos relleno abajo de `sm`, y
+    // `break-words` como red por si aun así no entra.
+    <div className="flex items-center gap-3 sm:gap-4 px-3 sm:px-5 py-4 sm:py-5 bg-white border border-surface-200 rounded-lg">
       <div className="w-9 h-9 rounded-md bg-primary-fixed text-primary flex items-center justify-center shrink-0">
         <Icon name={icon} className="text-[18px]" />
       </div>
       <div className="min-w-0">
-        <p className="text-[13px] text-on-surface-variant leading-tight">{label}</p>
+        <p className="text-[13px] text-on-surface-variant leading-tight break-words">{label}</p>
         <p className="text-[28px] font-semibold text-on-surface leading-tight tabular-nums">{value}</p>
       </div>
     </div>

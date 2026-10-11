@@ -82,7 +82,10 @@ export default function Cierre() {
         </div>
 
         <div className="space-y-base">
-          <h1 className="font-headline text-headline-lg text-on-surface">¡Examen finalizado!</h1>
+          {/* 32px fijos ocupaban media pantalla en un teléfono: escala. */}
+          <h1 className="font-headline text-headline-md sm:text-headline-lg text-on-surface">
+            ¡Examen finalizado!
+          </h1>
           <p className="text-body-md text-on-surface-variant">
             {examen?.nombre ?? 'Tu examen'} quedó guardado y no se puede modificar.
           </p>
@@ -107,7 +110,10 @@ export default function Cierre() {
               <p className="text-label-lg font-semibold text-on-surface">
                 {irARevision ? 'Entra a revisión académica' : 'Sin incidencias relevantes'}
               </p>
-              <p className="text-label-md text-on-surface-variant mt-0.5">
+              {/* `label-md` viene en semibold: un párrafo entero con peso de
+                  etiqueta se lee tan fuerte como el título de arriba y el cartel
+                  parece un bloque de texto gritado. La prosa va con `body`. */}
+              <p className="text-body-md font-normal text-on-surface-variant mt-1">
                 {irARevision ? (
                   <>
                     Tu sesión alcanzó o superó el umbral establecido ({umbralEfectivo} puntos).

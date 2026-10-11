@@ -65,7 +65,10 @@ export function Term({ termKey, children, className = '' }: TermProps) {
         tabIndex={0}
         aria-label={`Ver definición de ${entry.label}`}
         onClick={handleClick}
-        className="text-[10px] font-bold text-primary bg-primary/10 hover:bg-primary-100 w-4 h-4 rounded-full inline-flex items-center justify-center leading-none shrink-0 translate-y-[1px] focus:outline-none focus:ring-1 focus:ring-primary"
+        // El círculo mide 16px y va incrustado en medio de un párrafo, así que no
+        // se puede agrandar sin desacomodar el texto. El `before` extiende el área
+        // tocable a ~32px sin pintar nada: se ve igual, se puede tocar con el dedo.
+        className="relative text-[10px] font-bold text-primary bg-primary/10 hover:bg-primary-100 w-4 h-4 rounded-full inline-flex items-center justify-center leading-none shrink-0 translate-y-[1px] focus:outline-none focus:ring-1 focus:ring-primary before:absolute before:-inset-2 before:content-['']"
       >
         ?
       </button>

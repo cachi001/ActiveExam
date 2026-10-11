@@ -35,7 +35,7 @@ export function AvisoUsoCategoria({ uso, cargando, error }: AvisoUsoCategoriaPro
     return (
       <p
         role="note"
-        className="mt-2 rounded-lg bg-warning-container/50 text-on-surface px-3 py-2 text-body-sm"
+        className="mt-2 rounded-lg border border-warning-200 bg-warning-50 text-warning-800 px-3 py-2 text-body-sm"
       >
         No se pudo comprobar en qué exámenes se usa esta categoría.
       </p>
@@ -46,7 +46,7 @@ export function AvisoUsoCategoria({ uso, cargando, error }: AvisoUsoCategoriaPro
   return (
     <div
       role="note"
-      className="mt-2 rounded-lg bg-warning-container/50 text-on-surface px-3 py-2 text-body-sm
+      className="mt-2 rounded-lg border border-warning-200 bg-warning-50 text-warning-800 px-3 py-2 text-body-sm
         flex flex-col gap-1"
     >
       <p>{uso.aviso}</p>

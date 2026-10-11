@@ -52,7 +52,7 @@ export function PageSizeSelect({
     <label className={`flex items-center gap-2 whitespace-nowrap text-[13px] font-normal text-on-surface-variant ${className}`}>
       <span>Por página</span>
       <select
-        className="cursor-pointer rounded-md border border-surface-200 bg-white px-2 py-1 text-[13px] text-on-surface focus:border-primary focus:outline-none"
+        className="cursor-pointer rounded-md border border-surface-200 bg-white px-2 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
       >
@@ -105,7 +105,7 @@ export function Pagination({
           <label className="hidden items-center gap-2 whitespace-nowrap sm:flex">
             <span>Por página</span>
             <select
-              className="cursor-pointer rounded-md border border-surface-200 bg-white px-2 py-1 text-[13px] text-on-surface focus:border-primary focus:outline-none"
+              className="cursor-pointer rounded-md border border-surface-200 bg-white px-2 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
               value={pageSize}
               onChange={(e) => onPageSizeChange(Number(e.target.value))}
             >

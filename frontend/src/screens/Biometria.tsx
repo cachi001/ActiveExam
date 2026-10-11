@@ -176,7 +176,7 @@ export default function Biometria() {
           <div className="w-14 h-14 rounded-2xl bg-primary-fixed text-primary flex items-center justify-center mx-auto">
             <Icon name="face" className="text-[28px]" fill />
           </div>
-          <h2 className="font-headline text-headline-lg text-on-surface">Verificación biométrica de identidad</h2>
+          <h2 className="font-headline text-headline-md sm:text-headline-lg text-on-surface">Verificación biométrica de identidad</h2>
           <p className="text-body-md text-on-surface-variant">
             Confirmamos tu identidad comparando tu imagen en vivo con la foto de referencia que registraste.
             El resultado final siempre lo revisa el equipo. Proceso protegido con <Term termKey="liveness">verificación de presencia</Term>.

@@ -449,7 +449,6 @@ export default function ProctoringRevisor() {
     >
       <div className="space-y-lg animate-in fade-in duration-500">
         <RefreshBar
-          texto="Registro de sesiones"
           lastUpdatedAt={lastUpdatedAt}
           cargando={cargando}
           onActualizar={() => cargar(aplicados, page, pageSize)}

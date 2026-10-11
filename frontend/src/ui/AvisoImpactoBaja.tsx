@@ -70,7 +70,7 @@ export function AvisoImpactoBaja({ impacto, cargando }: AvisoImpactoBajaProps) {
       {inscriptos > 0 && (
         <p
           role="note"
-          className="mt-2 rounded-lg bg-warning-container/50 text-on-surface
+          className="mt-2 rounded-lg border border-warning-200 bg-warning-50 text-warning-800
             px-3 py-2 text-body-sm"
         >
           Hay <strong>{plural(inscriptos, 'alumno inscripto', 'alumnos inscriptos')}</strong>
@@ -82,7 +82,7 @@ export function AvisoImpactoBaja({ impacto, cargando }: AvisoImpactoBajaProps) {
       {rendiciones > 0 && (
         <p
           role="note"
-          className="mt-2 rounded-lg bg-warning-container/50 text-on-surface
+          className="mt-2 rounded-lg border border-warning-200 bg-warning-50 text-warning-800
             px-3 py-2 text-body-sm"
         >
           Ya tiene <strong>{plural(rendiciones, 'rendición', 'rendiciones')}</strong>

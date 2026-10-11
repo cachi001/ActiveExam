@@ -102,9 +102,14 @@ select:not([multiple]):not([size]) {
 }
 
 /* ----- slider moderno (range) — track via inline gradient, thumb estilado ----- */
+/* El alto del CONTROL es lo que se puede agarrar con el dedo: con 8px había que
+   acertarle a una línea. El riel sigue dibujándose de 8px (lo pintan los
+   pseudo-elementos de abajo); lo que crece es el área tocable, a los 24px que
+   pide WCAG 2.2 AA. */
 .ae-slider {
-  height: 8px;
+  height: 24px;
   border-radius: 9999px;
+  background: transparent;
 }
 .ae-slider:focus-visible {
   outline: 2px solid #3b82f6; /* primary-container */

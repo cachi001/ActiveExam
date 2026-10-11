@@ -85,7 +85,7 @@ export default function CameraPanel({
                 type="checkbox"
                 checked={showPose}
                 onChange={(e) => setShowPose(e.target.checked)}
-                className="w-4 h-4 accent-primary rounded"
+                className="w-6 h-6 accent-primary rounded"
               />
               <span className="text-label-sm text-on-surface">
                 <Icon name="accessibility_new" className="text-[14px] inline mr-base" />
@@ -97,7 +97,7 @@ export default function CameraPanel({
                 type="checkbox"
                 checked={showFullMesh}
                 onChange={(e) => setShowFullMesh(e.target.checked)}
-                className="w-4 h-4 accent-primary rounded"
+                className="w-6 h-6 accent-primary rounded"
               />
               <span className="text-label-sm text-on-surface">
                 <Icon name="face" className="text-[14px] inline mr-base" />

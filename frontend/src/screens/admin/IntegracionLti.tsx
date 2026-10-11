@@ -130,7 +130,6 @@ export default function IntegracionLti() {
     >
       <div className="space-y-lg animate-in fade-in duration-500">
         <RefreshBar
-          texto="Campus registrados"
           lastUpdatedAt={lastUpdatedAt}
           cargando={cargando}
           onActualizar={cargar}

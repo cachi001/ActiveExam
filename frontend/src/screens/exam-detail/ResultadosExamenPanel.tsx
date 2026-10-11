@@ -536,7 +536,7 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
           type="button"
           onClick={handleMarcarCargadasEnLote}
           disabled={marcandoId !== null || sincronizando || marcablesDeTodas.length === 0}
-          className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-[14px] font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg bg-gray-900 px-4 py-2 text-[14px] font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Icon
             name={marcandoId === 'lote' ? 'progress_activity' : 'how_to_reg'}
@@ -561,7 +561,6 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
       </div>
 
       <RefreshBar
-        texto="Alumnos que rindieron"
         lastUpdatedAt={lastUpdatedAt}
         cargando={cargandoTabla}
         onActualizar={() => fetchResultados(query)}
@@ -716,7 +715,7 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
                 type="checkbox"
                 checked={borrMostrarArchivadas}
                 onChange={(e) => setBorrMostrarArchivadas(e.target.checked)}
-                className="w-4 h-4 accent-primary cursor-pointer"
+                className="w-6 h-6 accent-primary cursor-pointer"
               />
               Mostrar archivadas
             </label>
@@ -756,7 +755,7 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
                     if (el) el.indeterminate = algunosSeleccionados;
                   }}
                   onChange={toggleSelectAll}
-                  className="w-4 h-4 accent-primary cursor-pointer"
+                  className="w-6 h-6 accent-primary cursor-pointer"
                 />
               ),
               width: '3rem',
@@ -768,7 +767,7 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
                   aria-label={`Seleccionar fila de ${alumnoDisplay(r)}`}
                   checked={selectedIds.has(r.session_id)}
                   onChange={() => toggleSelect(r.session_id)}
-                  className="w-4 h-4 accent-primary cursor-pointer"
+                  className="w-6 h-6 accent-primary cursor-pointer"
                 />
               ),
               tdClassName: 'px-3',

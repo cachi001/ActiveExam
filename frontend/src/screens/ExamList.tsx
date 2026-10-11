@@ -291,7 +291,6 @@ export default function ExamList() {
     >
       <div className="space-y-lg animate-in fade-in duration-500">
         <RefreshBar
-          texto="Exámenes"
           lastUpdatedAt={lastUpdatedAt}
           cargando={cargando}
           onActualizar={() => fetchImportados(query)}

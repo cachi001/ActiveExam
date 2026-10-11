@@ -37,7 +37,7 @@ interface Props {
 }
 
 const BASE =
-  'inline-flex items-center gap-1.5 rounded-md px-4 py-2 text-[13px] font-semibold text-white disabled:opacity-60';
+  'inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-4 py-2 text-[13px] font-semibold text-white disabled:opacity-60';
 
 export function ExportButtons({ exportando, disabled = false, compacto = false, onExportar }: Props) {
   const inerte = disabled || exportando !== null;

@@ -31,7 +31,10 @@ const VARIANTS: Record<Variant, string> = {
   // invita a hacer click justo donde hay que dudar. Este es el mismo botón
   // discreto, pero avisando en rojo apenas se lo apunta.
   'ghost-danger': 'bg-transparent text-on-surface-variant hover:bg-error-50 hover:text-error-600 active:bg-error-100',
-  outline: 'bg-surface-container-lowest text-on-surface border border-surface-300 shadow-sm hover:bg-primary-50 hover:border-primary-200 active:bg-primary-100',
+  // Gris neutro, no azul: el outline se usa en casi toda acción secundaria de la
+  // app, y si su hover se tiñe de primary, cualquier pantalla con varios botones
+  // termina viéndose toda azul apenas el mouse pasa por arriba.
+  outline: 'bg-surface-container-lowest text-on-surface border border-surface-300 shadow-sm hover:bg-surface-100 hover:border-surface-400 active:bg-surface-200',
   danger: 'bg-error-600 text-on-error hover:bg-error-500 active:bg-error shadow-sm',
   success: 'bg-success-600 text-on-primary hover:bg-success-500 active:bg-success shadow-sm',
   // Ámbar sólido. Existe para las acciones que van SOBRE una superficie ámbar
@@ -83,11 +86,11 @@ export const Button = forwardRef<HTMLButtonElement, {
 });
 
 export function Card({ children, className = '', padded = true }: { children: ReactNode; className?: string; padded?: boolean }) {
-  // Aterrizado a `rounded-lg` (16px) + borde slate sutil, sin shadow agresivo. El
-  // 2xl + shadow-card previo se acumulaba en pantallas con muchas cards y daba
-  // sensación pesada/redonda; el ajuste deja la card legible sin gritar.
+  // Plana: borde slate sutil, sin shadow. Una pantalla con varias cards apiladas
+  // (ej. detalle de examen) acumulaba sombras y se sentía pesada; el borde solo
+  // ya separa la card del fondo sin ese efecto.
   return (
-    <div className={`bg-white rounded-lg border border-surface-200 shadow-sm ${padded ? 'p-lg' : ''} ${className}`}>
+    <div className={`bg-white rounded-lg border border-surface-200 ${padded ? 'p-lg' : ''} ${className}`}>
       {children}
     </div>
   );
@@ -128,7 +131,10 @@ export function BackButton({
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex items-center gap-xs text-label-md text-on-surface-variant hover:text-primary transition-colors ${className}`}
+      // 20px de alto es la altura del texto, no un blanco al que se le pueda
+      // pegar con el dedo. El relleno vertical lo lleva a ~40px y el margen
+      // negativo lo compensa, así que se ve igual pero se puede tocar.
+      className={`inline-flex items-center gap-xs text-label-md text-on-surface-variant hover:text-primary transition-colors py-2 -my-2 pr-2 ${className}`}
       aria-label={label}
     >
       <Icon name="arrow_back" className="text-[20px]" />
@@ -139,7 +145,10 @@ export function BackButton({
 
 export function SectionTitle({ children, sub, action, icon }: { children: ReactNode; sub?: ReactNode; action?: ReactNode; icon?: string }) {
   return (
-    <div className="flex items-start justify-between gap-md mb-lg">
+    // La acción de la derecha (un select, un botón) no cedía ancho, así que en
+    // pantallas angostas aplastaba el título hasta 3px y lo partía letra por
+    // letra, en vertical. Abajo de `sm` se apilan; arriba, la acción no se encoge.
+    <div className="flex flex-col sm:flex-row items-start justify-between gap-sm sm:gap-md mb-lg">
       <div className="flex items-center gap-sm min-w-0">
         {icon && <Icon name={icon} className="text-[20px] text-on-surface-variant shrink-0" />}
         <div className="min-w-0">
@@ -147,7 +156,7 @@ export function SectionTitle({ children, sub, action, icon }: { children: ReactN
           {sub && <p className="text-label-sm text-on-surface-variant mt-base">{sub}</p>}
         </div>
       </div>
-      {action}
+      {action && <div className="shrink-0 max-w-full">{action}</div>}
     </div>
   );
 }
@@ -155,7 +164,7 @@ export function SectionTitle({ children, sub, action, icon }: { children: ReactN
 const SEV_STYLES: Record<Severidad, string> = {
   baseline: 'bg-surface-container-high text-on-surface-variant',
   baja: 'bg-blue-100 text-blue-700',
-  media: 'bg-warning-container text-warning',
+  media: 'bg-warning-100 text-warning-800',
   alta: 'bg-error-container text-on-error-container',
   critica: 'bg-error text-on-error',
 };
@@ -179,7 +188,7 @@ export function Badge({ children, tone = 'neutral', dot = false, className = '' 
     neutral: 'bg-surface-100 text-on-surface-variant',
     primary: 'bg-primary-fixed text-on-primary-fixed-variant',
     success: 'bg-success-container text-success',
-    warning: 'bg-warning-container text-warning',
+    warning: 'bg-warning-100 text-warning-800',
     error: 'bg-error-container text-on-error-container',
     // Relleno y no un fondo suave: una anulacion por fraude tiene que saltar
     // sobre un desaprobado, que es un resultado academico normal.
@@ -227,7 +236,7 @@ export function ProgressBar({ value, tone = 'primary' }: { value: number; tone?:
 }
 
 export function ScoreChip({ score, umbral }: { score: number; umbral: number }) {
-  const tone = score >= umbral ? 'bg-error text-on-error' : score >= umbral * 0.6 ? 'bg-warning-container text-warning' : 'bg-success-container text-success';
+  const tone = score >= umbral ? 'bg-error text-on-error' : score >= umbral * 0.6 ? 'bg-warning-100 text-warning-800' : 'bg-success-container text-success';
   return <span className={`px-sm py-base rounded-full text-label-sm font-bold ${tone}`}>Riesgo {score} pts</span>;
 }
 

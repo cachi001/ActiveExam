@@ -37,10 +37,11 @@ export function AvisoSinResponsable({
   return (
     <div
       role="alert"
-      className="flex items-start gap-sm rounded-xl bg-warning-container/60 text-on-surface
+      className="flex items-center gap-sm rounded-xl bg-error-container/40 border border-error/30 text-error
         px-md py-sm text-label-sm"
     >
-      <Icon name="person_off" className="text-[18px] shrink-0 mt-0.5" />
+      <Icon name="person_off" className="text-[18px] shrink-0" />
+      <span className="text-error/50 shrink-0" aria-hidden="true">•</span>
       <div className="space-y-1">
         {sinTutor === true && (
           <p>

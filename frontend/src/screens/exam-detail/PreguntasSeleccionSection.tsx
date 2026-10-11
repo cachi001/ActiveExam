@@ -321,7 +321,7 @@ export function PreguntasSeleccionSection({ examenId, materiaId, onSeleccionGuar
             </div>
           ) : categorias.length === 0 ? (
             <div className="flex items-center gap-sm text-on-surface-variant bg-surface-100 rounded-xl px-md py-sm text-label-sm">
-              <Icon name="info" className="text-[18px] shrink-0" />
+              <Icon name="info" className="text-[18px] shrink-0 text-primary" />
               Esta materia no tiene categorías definidas. Creá categorías en el Banco de preguntas primero.
             </div>
           ) : (
@@ -349,7 +349,7 @@ export function PreguntasSeleccionSection({ examenId, materiaId, onSeleccionGuar
                           checked={catIdsSeleccionadas.has(cat.id)}
                           onChange={() => toggleCategoria(cat.id)}
                           disabled={bloqueada || ejecutandoSorteo}
-                          className="w-4 h-4 accent-primary shrink-0 disabled:cursor-not-allowed"
+                          className="w-6 h-6 accent-primary shrink-0 disabled:cursor-not-allowed"
                         />
                         <span className="text-label-md text-on-surface">{cat.nombre}</span>
                       </label>
@@ -357,7 +357,7 @@ export function PreguntasSeleccionSection({ examenId, materiaId, onSeleccionGuar
                   ))}
                 </ul>
                 <p className="text-label-sm text-on-surface-variant mt-xs flex items-start gap-xs">
-                  <Icon name="info" className="text-[15px] shrink-0 mt-0.5" />
+                  <Icon name="info" className="text-[15px] shrink-0 mt-0.5 text-primary" />
                   El sorteo toma preguntas solo de las categorías marcadas. Las subcategorías
                   no se incluyen solas: marcá cada una que quieras sortear.
                 </p>
@@ -439,7 +439,7 @@ export function PreguntasSeleccionSection({ examenId, materiaId, onSeleccionGuar
                     checked={p.seleccionada}
                     onChange={() => toggle(p.id)}
                     disabled={guardando || bloqueada}
-                    className="w-4 h-4 accent-primary mt-0.5 shrink-0 disabled:cursor-not-allowed"
+                    className="w-6 h-6 accent-primary mt-0.5 shrink-0 disabled:cursor-not-allowed"
                   />
                   <div className="min-w-0 flex-1">
                     <p className="text-label-md text-on-surface line-clamp-2 break-words">

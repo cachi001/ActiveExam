@@ -30,6 +30,7 @@ import { tieneCapacidad } from '../lib/capabilities';
 import { loadEffectiveConfig, getEffectiveConfig } from '../config/effectiveConfigCache';
 import { DetalleHeader } from './proctoring/DetalleHeader';
 import { ConfigSnapshotCard } from './proctoring/ConfigSnapshotCard';
+import { CalibracionCard } from './proctoring/CalibracionCard';
 import { DecisionRevisorForm } from './proctoring/DecisionRevisorForm';
 import { EventoCard } from './proctoring/EventoCard';
 import { BiometriaCard } from './proctoring/BiometriaCard';
@@ -294,6 +295,11 @@ export default function ProctoringSessionDetail() {
             {/* migration 0083: foto de la config de scoring vigente al crear la
                 sesión. Solo se renderiza si la sesión tiene snapshot. */}
             <ConfigSnapshotCard detalle={detalle} />
+
+            {/* migración 0108: con qué cero se evaluó la mirada. Descriptiva,
+                nunca evidencia (reglas duras #5/#6). Solo se renderiza si la
+                sesión tiene calibración registrada. */}
+            <CalibracionCard detalle={detalle} />
 
             {/* Decisión del revisor, JUNTO al expediente. Solo cuando se entró
                 desde la cola (`backRoute`) y la sesión está cerrada: no se decide

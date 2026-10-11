@@ -161,12 +161,12 @@ export default function SeccionMoodle() {
             className={`flex items-start gap-sm rounded-lg px-4 py-3 text-label-sm border ${
               cred.token_configurado
                 ? 'border-success/40 bg-success-container/40 text-on-surface'
-                : 'border-warning/40 bg-warning-container/50 text-on-surface'
+                : 'border-warning-200 bg-warning-50 text-warning-800'
             }`}
           >
             <Icon
               name={cred.token_configurado ? 'check_circle' : 'key_off'}
-              className={`text-[18px] shrink-0 mt-0.5 ${cred.token_configurado ? 'text-success' : 'text-warning'}`}
+              className={`text-[18px] shrink-0 mt-0.5 ${cred.token_configurado ? 'text-success' : 'text-warning-600'}`}
               fill
             />
             <div className="min-w-0">

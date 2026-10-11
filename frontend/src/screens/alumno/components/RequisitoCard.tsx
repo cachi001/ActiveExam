@@ -28,7 +28,9 @@ export function RequisitoCard({ icon, title, badge, action, children, className 
       <div className="flex items-center justify-between gap-3 flex-wrap mb-7">
         <div className="flex items-center gap-3 min-w-0">
           <Icon name={icon} className="text-2xl text-on-surface-variant shrink-0" />
-          <h2 className="text-xl font-semibold text-on-surface whitespace-nowrap">{title}</h2>
+          {/* Sin `whitespace-nowrap`: "Consentimiento informado" no entra en una
+              línea en un teléfono angosto y sacaba la página de la pantalla. */}
+          <h2 className="text-lg sm:text-xl font-semibold text-on-surface">{title}</h2>
         </div>
         <Badge tone={badge.tone} dot className="shrink-0">
           {badge.label}

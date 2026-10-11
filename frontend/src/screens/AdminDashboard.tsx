@@ -125,6 +125,7 @@ export default function AdminDashboard() {
     >
       <div className="space-y-lg animate-in fade-in duration-500">
         <RefreshBar
+          texto="Datos del sistema"
           lastUpdatedAt={lastUpdatedAt}
           cargando={refrescando}
           onActualizar={recargar}
@@ -159,7 +160,9 @@ export default function AdminDashboard() {
           />
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-lg">
+        {/* `[&>*]:min-w-0`: sin esto los items del grid se estiran hasta su ancho
+            mínimo intrínseco y se pasan de la pantalla en teléfonos angostos. */}
+        <div className="grid lg:grid-cols-3 gap-lg [&>*]:min-w-0">
           {/* Lista del catálogo de exámenes importados — col-span-2 en desktop. */}
           <div className="lg:col-span-2">
             <Card padded={false}>
@@ -168,7 +171,7 @@ export default function AdminDashboard() {
                   <h2 className="text-[16px] font-semibold text-on-surface leading-tight">Exámenes</h2>
                   <p className="text-[12.5px] text-on-surface-variant mt-0.5">Catálogo de exámenes importados</p>
                 </div>
-                <Link to="/admin/examenes" className="inline-flex items-center gap-1 text-[13px] font-medium text-primary group">
+                <Link to="/admin/examenes" className="inline-flex items-center gap-1 text-[13px] font-medium text-primary group py-2 -my-2 pl-2">
                   <span className="group-hover:underline">Ver todos</span>
                   <Icon name="arrow_forward" className="text-[16px]" />
                 </Link>
@@ -235,28 +238,31 @@ function ExamenContenidoRow({ examen }: { examen: ExamenContenidoResumen }) {
   return (
     <Link
       to="/admin/examenes"
-      className="group flex items-center justify-between gap-4 px-lg py-5 hover:bg-primary-50 transition-colors"
+      // En teléfono el título, la ventana de fechas y la píldora de preguntas no
+      // entran en una fila: la lista empujaba la página a 459px de ancho contra un
+      // viewport de 320. Apilado abajo de `sm`.
+      className="group flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 px-lg py-5 hover:bg-primary-50 transition-colors"
     >
-      <div className="flex items-center gap-4 min-w-0">
-        <div className="w-12 h-12 rounded-lg bg-primary-fixed text-primary-700 flex items-center justify-center shrink-0 transition-colors group-hover:bg-primary group-hover:text-on-primary">
-          <Icon name="assignment" className="text-[24px]" />
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="w-10 h-10 rounded-lg bg-primary-fixed text-primary-700 flex items-center justify-center shrink-0 transition-colors group-hover:bg-primary group-hover:text-on-primary">
+          <Icon name="assignment" className="text-[20px]" />
         </div>
         <div className="min-w-0">
-          <p className="text-[17px] font-semibold text-on-surface truncate leading-snug">{examen.titulo}</p>
-          <p className="text-[14px] text-on-surface-variant truncate leading-snug mt-1">{subtitulo}</p>
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[13px] text-on-surface-variant">
+          <p className="text-[15px] font-semibold text-on-surface truncate leading-snug">{examen.titulo}</p>
+          <p className="text-[13px] text-on-surface-variant truncate leading-snug mt-1">{subtitulo}</p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[12px] text-on-surface-variant">
             <span className="inline-flex items-center gap-1 min-w-0">
-              <Icon name="event" className="text-[16px] shrink-0" />
+              <Icon name="event" className="text-[14px] shrink-0" />
               <span className="truncate">{formatVentanaExamen(examen.apertura, examen.cierre)}</span>
             </span>
             <span className="inline-flex items-center gap-1 shrink-0">
-              <Icon name="schedule" className="text-[16px]" />
+              <Icon name="schedule" className="text-[14px]" />
               {formatDuracionExamen(examen.tiempo_limite_min)}
             </span>
           </div>
         </div>
       </div>
-      <span className="shrink-0 self-start rounded-full bg-surface-100 px-3 py-1 text-[13px] font-medium text-on-surface-variant tabular-nums">
+      <span className="shrink-0 self-start rounded-full bg-surface-100 px-3 py-1 text-[12px] font-medium text-on-surface-variant tabular-nums">
         {examen.cantidad_preguntas} preguntas
       </span>
     </Link>

@@ -85,7 +85,7 @@ export function ResetearPasswordCard({ usuario }: { usuario: UsuarioAdmin }) {
           </div>
           <p
             role="alert"
-            className="flex items-start gap-xs rounded-lg bg-warning-container/60 px-md py-sm text-label-sm text-on-surface"
+            className="flex items-start gap-xs rounded-lg border border-warning-200 bg-warning-50 px-md py-sm text-label-sm text-warning-800"
           >
             <Icon name="warning" className="text-[18px] shrink-0 mt-0.5" />
             <span>

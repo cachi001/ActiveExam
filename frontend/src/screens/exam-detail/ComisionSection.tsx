@@ -5,9 +5,9 @@ import { asociarExamenAComision } from '../../lib/examContentAdmin';
 import type { Comision, Materia } from '../../lib/types';
 
 const SOFT_INPUT_CLS =
-  'w-full rounded-lg border border-surface-300 bg-white px-3 py-2.5 text-sm shadow-sm ' +
+  'w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm ' +
   'text-on-surface transition-colors hover:border-surface-400 focus:border-surface-500 focus:outline-none ' +
-  'disabled:bg-surface-100 disabled:text-on-surface-variant disabled:border-surface-200 disabled:shadow-none disabled:cursor-not-allowed';
+  'disabled:bg-surface-100 disabled:text-on-surface-variant disabled:border-surface-200 disabled:cursor-not-allowed';
 const SOFT_LABEL_CLS = 'block text-sm font-medium text-on-surface';
 
 interface Props {

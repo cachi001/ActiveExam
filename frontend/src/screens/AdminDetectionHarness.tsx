@@ -146,7 +146,10 @@ export default function AdminDetectionHarness() {
               Izquierda: cámara (protagonista) + Log de eventos DEBAJO.
               Derecha:   medidor de riesgo + buffer (reseteable) + señales.
         ============================================================ */}
-        <div className="grid lg:grid-cols-2 gap-lg items-stretch">
+        {/* `[&>*]:min-w-0`: los items del grid arrancan con `min-width:auto` y se
+            estiran hasta su mínimo intrínseco; en 320px las tarjetas se pasaban
+            16px de la pantalla. */}
+        <div className="grid lg:grid-cols-2 gap-lg items-stretch [&>*]:min-w-0">
           <div className="flex flex-col gap-lg">
             <CameraPanel
               videoRef={h.videoRef}

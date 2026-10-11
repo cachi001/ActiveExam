@@ -228,7 +228,6 @@ export default function Revisor() {
     >
       <div className="space-y-lg animate-in fade-in duration-500">
         <RefreshBar
-          texto="Cola de revisión"
           lastUpdatedAt={lastUpdatedAt}
           cargando={refrescando}
           onActualizar={recargarSesiones}

@@ -234,7 +234,7 @@ export default function CoverageChecklist({
                   <select
                     value={String(pesoVivo)}
                     onChange={(e) => onOverrideChange?.(entry.tipo, parseInt(e.target.value, 10))}
-                    className="px-1.5 py-0.5 text-[12px] rounded-md border border-outline-variant bg-white font-mono focus:outline-none focus:border-surface-500 transition-colors"
+                    className="px-1.5 py-1 min-h-[24px] text-[12px] rounded-md border border-outline-variant bg-white font-mono focus:outline-none focus:border-surface-500 transition-colors"
                     aria-label={`Peso de ${entry.label} (rango ${rangoDeSeveridad(sevVisible).min}–${rangoDeSeveridad(sevVisible).max}, severidad ${SEV_LABEL[sevVisible]})`}
                   >
                     {Array.from(

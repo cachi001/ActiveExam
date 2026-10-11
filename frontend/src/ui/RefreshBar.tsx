@@ -22,15 +22,25 @@ function formatHora(ts?: number): string {
   return new Date(ts).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
-export function RefreshBar({ texto = 'Datos del sistema', lastUpdatedAt, cargando, onActualizar }: RefreshBarProps) {
+export function RefreshBar({ texto, lastUpdatedAt, cargando, onActualizar }: RefreshBarProps) {
   const hora = formatHora(lastUpdatedAt);
   return (
     <div className="mb-md flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-[13px] text-primary bg-primary/5 rounded-xl px-4 py-3 border border-primary/15">
       <div className="flex items-center gap-2">
         <Icon name="calendar_today" className="text-[16px] shrink-0" />
         <span>
-          {texto}
-          {hora && <span className="text-primary/60"> • Actualizado: {hora}</span>}
+          {texto && <>{texto} </>}
+          {hora ? (
+            <span className="text-primary/60">Actualizado: {hora}</span>
+          ) : cargando ? (
+            // Primera carga (todavía sin `lastUpdatedAt`): sin esto, la barra
+            // aparecía como fondo + ícono solos, sin texto — un flash que se
+            // leía roto hasta que la carga terminaba y el texto aparecía de
+            // golpe. Con esto, el ícono siempre trae texto al lado mientras
+            // carga. Si la carga YA terminó y sigue sin `lastUpdatedAt` (falló),
+            // no se fuerza texto acá — el error de la pantalla ya lo explica.
+            <span className="text-primary/60">Cargando…</span>
+          ) : null}
         </span>
       </div>
       <button

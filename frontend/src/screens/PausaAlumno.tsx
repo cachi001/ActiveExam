@@ -256,7 +256,9 @@ export function PausaAlumno({
           className="fixed inset-0 z-[100] bg-inverse-surface/90 backdrop-blur-md flex items-center justify-center p-lg animate-in fade-in"
         >
           <Card className="max-w-lg w-full text-center space-y-lg">
-            <div className="w-20 h-20 rounded-full bg-primary-container text-primary flex items-center justify-center mx-auto">
+            {/* El contenido sobre `primary-container` va con `on-primary-container`.
+                Estaba con `text-primary`: azul sobre azul, el ícono no se veía. */}
+            <div className="w-20 h-20 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center mx-auto">
               <Icon name="pause_circle" className="text-[44px]" fill />
             </div>
             <div className="space-y-base">

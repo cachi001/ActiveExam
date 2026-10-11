@@ -58,7 +58,9 @@ export function EstadisticasBody({ cargando, error, data, onReintentar }: Estadi
       {/* Stat cards con datos reales del endpoint. Cero acá es honesto (el fetch
           fue OK); un fallo se ramifica arriba como error, no como estas cards.
           Sin descripciones: solo el número, para lectura limpia de un vistazo. */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-md">
+      {/* Una columna abajo de 380px: con dos, el ícono se queda con el ancho y
+          etiquetas como "Comisiones" se cortaban a la mitad. */}
+      <div className="grid grid-cols-1 min-[380px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-md [&>*]:min-w-0">
         <StatCard icon="assignment" label="Exámenes" value={data.total_examenes} tono="primary" />
         <StatCard icon="school" label="Materias" value={data.total_materias} tono="violet" />
         <StatCard icon="groups" label="Comisiones" value={data.total_comisiones} tono="cyan" />

@@ -42,7 +42,10 @@ export function ExamenImportadoCard({ contenido, rindiendo, gate, perfilCompleto
     .filter(Boolean)
     .join(' · ');
   return (
-    <Card className="flex items-center justify-between gap-md p-md">
+    // En un teléfono el botón le comía el ancho a los datos y las fechas se
+    // partían en cinco líneas cada una. Abajo de `sm` se apila: los datos ocupan
+    // todo el ancho y el botón va debajo, entero.
+    <Card className="flex flex-col sm:flex-row sm:items-center justify-between gap-md p-md">
       <div className="flex items-start gap-sm min-w-0">
         <div className={`w-9 h-9 rounded-md flex items-center justify-center shrink-0 mt-0.5 ${inerte ? 'bg-surface-container text-on-surface-variant' : 'bg-primary-fixed text-primary'}`}>
           <Icon name="assignment" className="text-[18px]" />
@@ -113,7 +116,13 @@ export function ExamenImportadoCard({ contenido, rindiendo, gate, perfilCompleto
         // de arriba ya lo explica.
         null
       ) : faltaPerfil ? (
-        <Button variant="primary" size="sm" onClick={onCompletarPerfil} icon="manage_accounts">
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={onCompletarPerfil}
+          icon="manage_accounts"
+          className="w-full sm:w-auto shrink-0"
+        >
           Completar perfil
         </Button>
       ) : (
@@ -126,6 +135,7 @@ export function ExamenImportadoCard({ contenido, rindiendo, gate, perfilCompleto
           onClick={onRendir}
           disabled={rindiendo}
           icon={rindiendo ? undefined : enCurso ? 'play_arrow' : 'arrow_forward'}
+          className="w-full sm:w-auto shrink-0"
         >
           {rindiendo ? 'Verificando…' : enCurso ? 'Continuar examen' : 'Ver examen'}
         </Button>

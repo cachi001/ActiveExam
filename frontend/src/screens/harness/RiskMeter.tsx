@@ -92,7 +92,7 @@ export default function RiskMeter({
             }}
             aria-label="Umbral de riesgo para revisión"
             aria-valuetext={`score mayor o igual a ${riskThreshold} puntos prioriza revisión`}
-            className="ae-slider w-full appearance-none bg-transparent cursor-pointer"
+            className="ae-slider h-6 w-full appearance-none bg-transparent cursor-pointer"
             style={{
               background: `linear-gradient(to right, #2563eb 0%, #2563eb ${umbralPct}%, #cbd5e1 ${umbralPct}%, #cbd5e1 100%)`,
             }}

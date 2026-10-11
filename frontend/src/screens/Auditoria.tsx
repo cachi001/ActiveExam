@@ -421,7 +421,6 @@ export default function Auditoria() {
       }
     >
       <RefreshBar
-        texto="Auditoría"
         lastUpdatedAt={lastUpdatedAt}
         cargando={cargando}
         onActualizar={() => cargar(filtros, offset, pageSize)}
@@ -578,7 +577,11 @@ export default function Auditoria() {
                     </span>
 
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-3">
+                      {/* Las etiquetas y el bloque de la derecha (acción + fecha)
+                          competían en una sola fila: en teléfono la fecha, que no
+                          se puede cortar, empujaba la página fuera de pantalla.
+                          Se apila abajo de `sm`. */}
+                      <div className="flex flex-col sm:flex-row items-start justify-between gap-1 sm:gap-3">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span
                             className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold"
