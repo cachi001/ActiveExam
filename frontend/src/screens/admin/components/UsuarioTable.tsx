@@ -129,7 +129,7 @@ export function UsuarioTable({
             <button
               type="button"
               onClick={() => onVerDetalle(u)}
-              className="font-medium text-surface-900 hover:text-primary transition-colors text-left block"
+              className="font-medium text-surface-900 hover:text-primary transition-colors text-left block py-2 -my-2"
             >
               {nombreMostrar(u)}
             </button>
@@ -281,7 +281,7 @@ export function UsuarioTable({
                 <button
                   type="button"
                   onClick={() => onVerDetalle(u)}
-                  className="font-medium text-surface-900 hover:text-primary transition-colors truncate text-left w-full"
+                  className="font-medium text-surface-900 hover:text-primary transition-colors truncate text-left w-full py-2 -my-2"
                 >
                   {nombreMostrar(u)}
                 </button>

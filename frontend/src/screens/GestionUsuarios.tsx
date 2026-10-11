@@ -239,7 +239,6 @@ export default function GestionUsuarios() {
     >
       <div className="space-y-lg animate-in fade-in duration-500">
         <RefreshBar
-          texto="Gestión de usuarios"
           lastUpdatedAt={lastUpdatedAt}
           cargando={cargando}
           onActualizar={() => cargarUsuarios(offset, filtroRol, filtroEstado, filtroQ, filtroMateria, filtroComision)}

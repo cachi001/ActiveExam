@@ -81,9 +81,9 @@ async function llenarYEnviar() {
   fireEvent.change(screen.getByLabelText(/^usuario$/i), {
     target: { value: 'nuevo.uni' },
   });
-  // Seleccionar al menos un rol (el primero disponible)
-  const checkboxes = screen.getAllByRole('checkbox');
-  if (checkboxes.length > 0) fireEvent.click(checkboxes[0]);
+  // Seleccionar un rol (el primero disponible)
+  const radios = screen.getAllByRole('radio');
+  if (radios.length > 0) fireEvent.click(radios[0]);
 
   fireEvent.click(screen.getByRole('button', { name: /crear usuario/i }));
 }

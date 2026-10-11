@@ -20,9 +20,9 @@ export function hayCambios(original: UsuarioAdmin | null, form: FormState): bool
   if (texto(form.nombre) !== texto(original.nombre)) return true;
   if (texto(form.apellido) !== texto(original.apellido)) return true;
 
-  // Los roles se comparan como CONJUNTO: los checkboxes los agregan en el orden en
-  // que se tocan, así que destildar y volver a tildar el mismo rol cambia el orden
-  // del array sin cambiar nada real.
+  // Un usuario tiene un solo rol, pero se sigue comparando como array (así llega
+  // de la API) ordenándolo antes: evita falsos positivos si algún día cambia el
+  // orden de serialización sin que el rol real haya cambiado.
   const antes = [...(original.roles ?? [])].sort();
   const ahora = [...form.roles].sort();
   return antes.length !== ahora.length || antes.some((r, i) => r !== ahora[i]);

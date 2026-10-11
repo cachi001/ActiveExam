@@ -170,14 +170,11 @@ export default function UsuarioCreate() {
       setForm((prev) => ({ ...prev, [campo]: e.target.value }));
   }
 
+  // Un usuario tiene exactamente UN rol (nunca varios — decisión del dueño,
+  // rompía la separación de poderes entre quien pone la nota y quien decide
+  // el fraude). Elegir un rol nuevo reemplaza al anterior, no se acumulan.
   function toggleRol(rol: string) {
-    setForm((prev) => {
-      const existe = prev.roles.includes(rol);
-      return {
-        ...prev,
-        roles: existe ? prev.roles.filter((r) => r !== rol) : [...prev.roles, rol],
-      };
-    });
+    setForm((prev) => ({ ...prev, roles: [rol] }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -186,7 +183,7 @@ export default function UsuarioCreate() {
 
     const roles = form.roles;
     if (roles.length === 0) {
-      setFormError('Seleccioná al menos un rol.');
+      setFormError('Seleccioná un rol.');
       return;
     }
     if (!form.username.trim()) {

@@ -23,6 +23,10 @@ interface UsuarioFormPanelProps {
   /** Solo en modo editar: si el formulario tiene algo distinto de lo cargado.
    *  Sin cambios, "Guardar cambios" queda deshabilitado. */
   hayCambios?: boolean;
+  /** Editando la propia cuenta: nadie cambia su propio rol, ni siquiera la
+   *  cuenta raíz — un cambio de privilegio no se auto-aprueba. El backend ya
+   *  lo rechaza (409); esto evita que el intento llegue a mandarse. */
+  esPropioUsuario?: boolean;
 }
 
 /** Permisos reales de un rol, agrupados por módulo/dominio (patrón copiado de
@@ -68,7 +72,9 @@ function PermisosDeRol({ rol }: { rol: Rol }) {
 export function UsuarioFormPanel({
   modoForm, editando, form, formError, enviando,
   cambiarTexto, toggleRol, onSubmit, onCancelar, hayCambios = true,
+  esPropioUsuario = false,
 }: UsuarioFormPanelProps) {
+  const rolDeshabilitado = enviando || esPropioUsuario;
   return (
     <Card>
       <SectionTitle>
@@ -131,22 +137,33 @@ export function UsuarioFormPanel({
         </div>
 
         <div>
-          <p className="text-label-sm text-on-surface-variant mb-sm">Roles</p>
+          <p className="text-label-sm text-on-surface-variant mb-sm">Rol</p>
           {/* Una fila por rol con sus PERMISOS reales (no una descripción vaga):
               elegir un rol es decidir qué va a poder hacer esa persona, y quien lo
-              elige tiene que ver la consecuencia concreta sin ir a leer el código. */}
+              elige tiene que ver la consecuencia concreta sin ir a leer el código.
+              Selección ÚNICA (radio, no checkbox): un usuario tiene un solo rol —
+              combinarlos rompe la separación entre quien pone la nota y quien
+              decide el fraude. */}
+          {esPropioUsuario && (
+            <p className="text-body-sm text-on-surface-variant mb-sm">
+              No podés cambiar tu propio rol — pedile a otro administrador que lo haga.
+            </p>
+          )}
           <div className="grid gap-sm sm:grid-cols-2 items-stretch">
             {ROLES_FORMULARIO.map((rol) => (
               <label
                 key={rol}
-                className="flex h-full items-start gap-sm cursor-pointer select-none rounded-md border border-surface-200 p-sm hover:bg-primary-50 hover:border-primary-200 transition-colors"
+                className={`flex h-full items-start gap-sm select-none rounded-md border border-surface-200 p-sm transition-colors ${
+                  rolDeshabilitado ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:bg-primary-50 hover:border-primary-200'
+                }`}
               >
                 <input
-                  type="checkbox"
-                  checked={form.roles.includes(rol)}
+                  type="radio"
+                  name="rol"
+                  checked={form.roles[0] === rol}
                   onChange={() => toggleRol(rol)}
-                  disabled={enviando}
-                  className="w-4 h-4 accent-primary mt-0.5 shrink-0"
+                  disabled={rolDeshabilitado}
+                  className="w-6 h-6 accent-primary mt-0.5 shrink-0"
                 />
                 <span className="min-w-0">
                   <span className="block text-label-md text-on-surface">{ROL_LABELS[rol]}</span>

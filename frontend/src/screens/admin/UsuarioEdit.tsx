@@ -43,6 +43,13 @@ export default function UsuarioEdit() {
   const puedeGestionar =
     principal != null && tieneCapacidad(principal.roles as Parameters<typeof tieneCapacidad>[0], 'gestionar_usuarios');
 
+  // Nadie cambia su propio rol (ni siquiera la cuenta raíz): un cambio de
+  // privilegio no se auto-aprueba. El backend rechaza CUALQUIER `roles` en el
+  // PUT sobre la propia cuenta, aunque no cambie de valor — por eso el envío
+  // más abajo lo omite del todo cuando es la propia cuenta.
+  const esPropioUsuario =
+    !!principal && !!usuario && (usuario.email === principal.email || usuario.username === principal.username);
+
   // Se vuelve al LISTADO, que es de donde se entra en la práctica (el menú de cada
   // fila) y un destino que siempre existe. Antes decía "Volver al detalle" y llevaba
   // ahí siempre: si entraste por el listado, terminabas en una pantalla por la que
@@ -95,11 +102,11 @@ export default function UsuarioEdit() {
       setForm((prev) => ({ ...prev, [campo]: e.target.value }));
   }
 
+  // Un usuario tiene exactamente UN rol (nunca varios — decisión del dueño,
+  // rompía la separación de poderes entre quien pone la nota y quien decide
+  // el fraude). Elegir un rol nuevo reemplaza al anterior, no se acumulan.
   function toggleRol(rol: string) {
-    setForm((prev) => {
-      const existe = prev.roles.includes(rol);
-      return { ...prev, roles: existe ? prev.roles.filter((r) => r !== rol) : [...prev.roles, rol] };
-    });
+    setForm((prev) => ({ ...prev, roles: [rol] }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -107,7 +114,7 @@ export default function UsuarioEdit() {
     setFormError(null);
     if (!usuarioId) return;
     if (form.roles.length === 0) {
-      setFormError('Seleccioná al menos un rol.');
+      setFormError('Seleccioná un rol.');
       return;
     }
     setEnviando(true);
@@ -116,14 +123,17 @@ export default function UsuarioEdit() {
         email: form.email || undefined,
         nombre: form.nombre || undefined,
         apellido: form.apellido || undefined,
-        roles: form.roles,
+        // Omitido del todo (no `undefined` en el objeto, la clave ausente) al
+        // editar la propia cuenta: el backend rechaza el PUT completo si viene
+        // `roles`, aunque no cambie de valor.
+        ...(esPropioUsuario ? {} : { roles: form.roles }),
       });
       toast.success('Usuario actualizado correctamente.');
       navigate(volverA);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('409')) {
-        setFormError('Ya existe un usuario con ese email, o no podés quitarte el rol de administrador.');
+        setFormError('Ya existe un usuario con ese email, o la cuenta está protegida contra este cambio.');
       } else {
         setFormError(`Error al guardar: ${msg}`);
       }
@@ -186,6 +196,7 @@ export default function UsuarioEdit() {
             onSubmit={handleSubmit}
             onCancelar={() => navigate(volverA)}
             hayCambios={calcularCambios(usuario, form)}
+            esPropioUsuario={esPropioUsuario}
           />
         )}
 

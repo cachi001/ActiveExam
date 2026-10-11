@@ -151,6 +151,8 @@ class CrearUsuarioRequest(BaseModel):
         invalidos = [r for r in v if r not in roles_aceptados]
         if invalidos:
             raise ValueError(f"Roles invalidos: {invalidos}. Roles validos: {sorted(roles_aceptados)}")
+        if len(v) != 1:
+            raise ValueError("Un usuario debe tener exactamente un rol.")
         return v
 
 
@@ -195,6 +197,8 @@ class EditarUsuarioRequest(BaseModel):
         invalidos = [r for r in v if r not in roles_aceptados]
         if invalidos:
             raise ValueError(f"Roles invalidos: {invalidos}. Roles validos: {sorted(roles_aceptados)}")
+        if len(v) != 1:
+            raise ValueError("Un usuario debe tener exactamente un rol.")
         return v
 
 
@@ -660,16 +664,15 @@ async def editar_usuario(
         if body.email is not None and body.email != usuario.email:
             _proteger_cuenta_raiz(usuario, principal, "cambiarle el correo a")
 
-        # Anti-lockout: el admin no puede quitarse a si mismo el rol admin_sistema.
+        # Nadie edita su propio rol, ni siquiera la cuenta raíz (decisión del
+        # dueño, 9/9/2026): un cambio de privilegio nunca se auto-aprueba. Esto
+        # ademas evita el lockout total sin depender de contar cuantos admins
+        # quedan (esa cuenta puede cambiar en el mismo instante en que se la mide).
         if body.roles is not None:
-            es_el_mismo = str(usuario.id) == str(principal.subject)
-            if es_el_mismo and Rol.ADMIN_SISTEMA.value not in body.roles:
+            if str(usuario.id) == str(principal.subject):
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=(
-                        "No podés quitarte el rol admin_sistema. "
-                        "Asigná primero ese rol a otro administrador."
-                    ),
+                    detail="No podés cambiar tu propio rol. Pedile a otro administrador que lo haga.",
                 )
             usuario.roles = body.roles
 
