@@ -25,11 +25,21 @@ export interface BaselineGaze {
   y: number;
 }
 
-let baseline: BaselineGaze | null = null;
+/** Rango [min,max] por eje medido en las 4 esquinas (ver `calibracionRango.ts`).
+ *  `null` cuando la calibración fue de un solo punto (respaldo del examen). */
+export interface RangoGuardado {
+  rangoX: [number, number];
+  rangoY: [number, number];
+}
 
-/** Guarda el baseline medido en el paso de calibración. */
-export function guardarBaselineGaze(valor: BaselineGaze | null): void {
+let baseline: BaselineGaze | null = null;
+let rango: RangoGuardado | null = null;
+
+/** Guarda el baseline medido en el paso de calibración. `rango` opcional: solo
+ *  la calibración de 4 esquinas lo produce (ver `CalibracionCuatroPuntos`). */
+export function guardarBaselineGaze(valor: BaselineGaze | null, rangoValor: RangoGuardado | null = null): void {
   baseline = valor;
+  rango = valor ? rangoValor : null;
 }
 
 /** El baseline del paso previo, o `null` si no se calibró (o se recargó). */
@@ -37,9 +47,15 @@ export function baselineGazeGuardado(): BaselineGaze | null {
   return baseline;
 }
 
+/** El rango de 4 esquinas guardado junto al baseline, o `null` sin ese dato. */
+export function rangoGazeGuardado(): RangoGuardado | null {
+  return rango;
+}
+
 /** Lo descarta. Para los tests y para cuando termina la rendición. */
 export function olvidarBaselineGaze(): void {
   baseline = null;
+  rango = null;
 }
 
 /**

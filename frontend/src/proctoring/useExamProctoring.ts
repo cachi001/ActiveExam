@@ -39,7 +39,8 @@ import { captureVideoFrame } from '../lib/videoFrameCapture';
 import { MediaPipeVisionEngine } from '../vision/MediaPipeVisionEngine';
 import type { VisionEngine } from '../vision/VisionEngine';
 import { loadRealEngine, disposeRealEngine } from '../vision/harnessEngineLoader';
-import { baselineGazeGuardado, debeCalibrarEnElExamen } from './baselineGaze';
+import { baselineGazeGuardado, debeCalibrarEnElExamen, rangoGazeGuardado } from './baselineGaze';
+import { CALIBRACION_DURACION_MS, CALIBRACION_INTERVALO_MS } from './calibracionConstantes';
 import { VisionPipeline, type EventSink } from './visionPipeline';
 import { StateTransitionRules, DEFAULT_CONFIG } from './stateTransitionRules';
 import { loadScoringWeights, pesoEvento, severidadEvento } from './scoringWeights';
@@ -263,16 +264,16 @@ export function __resetSesionEnCreacionParaTest(): void {
 const FRAME_INTERVAL_MS = 200;
 
 /**
- * Duración de la calibración de mirada al inicio del examen (pentest 2026-08-21,
- * miedo del usuario "camara descentrada"): antes de arrancar las reglas de
- * detección, se le pide al alumno mirar al centro de la pantalla durante este
- * tiempo. El promedio de gaze capturado se fija como baseline (ver
- * `StateTransitionRules.calibrarGaze`), así la deteccion de "mirada desviada" pasa
- * a medirse relativa a COMO ESE alumno mira normalmente con SU camara (sin
- * importar si esta fisicamente centrada o no), en vez de un cero absoluto.
- * No cuenta contra el tiempo limite del examen (corre ANTES de examen_iniciado_en).
+ * Calibración de mirada de RESPALDO al inicio del examen (pentest 2026-08-21,
+ * miedo del usuario "camara descentrada"): solo corre si el paso previo del
+ * ingreso (`CalibracionPaso`, 4 esquinas en pantalla completa) no dejó nada
+ * guardado — recarga a mitad de examen, o entrada por una ruta que se saltea
+ * la sala. Es UN solo punto (mirando al centro), no las 4 esquinas: reusa las
+ * mismas constantes compartidas (`calibracionConstantes.ts`) que usa cada
+ * punto del paso previo, pero solo mide uno — no hay rango que calcular de un
+ * único punto. No cuenta contra el tiempo límite del examen (corre ANTES de
+ * examen_iniciado_en).
  */
-const CALIBRACION_GAZE_MS = 3000;
 
 /**
  * Corre un mini-loop de captura de `gaze` crudo (sin evaluar reglas) durante
@@ -1004,33 +1005,60 @@ export function useExamProctoring(
       }
       engineRef.current = engine;
 
-      // Calibración de mirada (ver CALIBRACION_GAZE_MS): corre ANTES de armar el
-      // pipeline y arrancar el loop de reglas, para que ningún frame se evalúe con
-      // un baseline todavía sin fijar. No cuenta contra el tiempo del examen (el
-      // cronómetro ancla a examen_iniciado_en, seteado recién al primer fetch de
-      // preguntas). Si no se pudo capturar (sin rostro, motor stub), sigue con el
-      // baseline por defecto {0,0} — comportamiento actual, no bloquea el examen.
-      // La calibración es un PASO del ingreso (sala de espera), no algo que pasa
-      // en medio de la rendición: ahí le comía tiempo al alumno con el reloj ya
+      // Calibración de mirada: corre ANTES de armar el pipeline y arrancar el
+      // loop de reglas, para que ningún frame se evalúe con un baseline todavía
+      // sin fijar. No cuenta contra el tiempo del examen (el cronómetro ancla a
+      // examen_iniciado_en, seteado recién al primer fetch de preguntas). Si no
+      // se pudo capturar (sin rostro, motor stub), sigue con el baseline por
+      // defecto {0,0} — comportamiento actual, no bloquea el examen.
+      // La calibración PRINCIPAL es un PASO del ingreso (sala de espera, 4
+      // esquinas en pantalla completa — `CalibracionPaso`), no algo que pasa en
+      // medio de la rendición: ahí le comía tiempo al alumno con el reloj ya
       // corriendo y sin decirle cómo salió. Acá solo se toma lo que dejó ese
-      // paso. Se sigue calibrando en el examen SOLO como respaldo — recarga a
-      // mitad de examen, o entrada por una ruta que se saltea la sala — para que
-      // nadie quede sin calibrar.
+      // paso. Se sigue calibrando en el examen SOLO como respaldo (UN punto, no
+      // 4 esquinas) — recarga a mitad de examen, o entrada por una ruta que se
+      // saltea la sala — para que nadie quede sin calibrar.
       let baselineGaze = baselineGazeGuardado();
+      let rangoGaze = rangoGazeGuardado();
+      let origenCalibracion: 'paso_previo' | 'respaldo' = 'paso_previo';
       if (debeCalibrarEnElExamen()) {
         setCalibrando(true);
         baselineGaze = await capturarBaselineGaze(
           videoRef,
           engine,
-          CALIBRACION_GAZE_MS,
-          FRAME_INTERVAL_MS,
+          CALIBRACION_DURACION_MS,
+          CALIBRACION_INTERVALO_MS,
           () => cancelled || stoppedRef.current,
         );
+        // El respaldo mide UN punto: no hay 4 esquinas de las que calcular un
+        // rango, así que StateTransitionRules cae al factor fijo (2.5) en vez
+        // del medido — decisión escrita, no accidente (ver calibrarGaze).
+        rangoGaze = null;
+        origenCalibracion = 'respaldo';
         setCalibrando(false);
       }
       if (cancelled || stoppedRef.current) {
         void disposeRealEngine().catch(() => {});
         return;
+      }
+      // Descriptivo, no evidencia (reglas duras #5/#6): con qué cero se evaluó
+      // esta sesión, para que quien la revise después lo vea. Best-effort — no
+      // se espera ni se propaga: la calibración YA se aplicó localmente abajo.
+      if (baselineGaze) {
+        const muestrasPorPunto = Math.max(
+          1,
+          Math.floor(CALIBRACION_DURACION_MS / CALIBRACION_INTERVALO_MS),
+        );
+        void sessionPromiseRef.current?.then((sid) => {
+          if (!sid || !baselineGaze) return;
+          void api.guardarCalibracionSesion(sid, {
+            centro: baselineGaze,
+            rango_x: rangoGaze?.rangoX ?? null,
+            rango_y: rangoGaze?.rangoY ?? null,
+            origen: origenCalibracion,
+            muestras_por_punto: muestrasPorPunto,
+          });
+        });
       }
 
       // Sink LEAN: delega cada evento al handler con estado fresco.
@@ -1049,7 +1077,7 @@ export function useExamProctoring(
           }
         : { ...DEFAULT_CONFIG };
       const rules = new StateTransitionRules(thresholds);
-      if (baselineGaze) rules.calibrarGaze(baselineGaze);
+      if (baselineGaze) rules.calibrarGaze(baselineGaze, rangoGaze ?? undefined);
       pipelineRef.current = new VisionPipeline({ engine, sink, rules });
       setActivo(true);
 

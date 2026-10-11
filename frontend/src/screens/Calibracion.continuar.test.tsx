@@ -72,15 +72,40 @@ describe('botón Continuar del paso de calibración', () => {
     expect(texto).toContain('Continuar');
   });
 
-  it('sin cámara también deja continuar', async () => {
-    // No se puede calibrar, pero perder precisión del detector es menos grave que
-    // dejar a alguien trabado en el ingreso.
+  // CAMBIO DE DECISIÓN (dueño, 6/9/2026): la calibración pasa a ser OBLIGATORIA.
+  // Antes se dejaba pasar sin calibrar con el criterio de "perder precisión es
+  // menos grave que trabar a alguien en el ingreso". El costo de ese criterio se
+  // vio en la práctica: sin calibrar, la mirada se mide contra el centro de la
+  // CÁMARA, o sea que el sistema espera que el alumno mire al lente mientras
+  // rinde. Eso produce eventos de mirada desviada por leer normalmente.
+  //
+  // Trabar a alguien sin cámara no agrega un bloqueo nuevo: la cámara ya es
+  // obligatoria para rendir (el chequeo de requisitos no deja pasar sin ella).
+  it('sin cámara NO deja continuar', async () => {
     const texto = await montar('sin_camara');
-    expect(texto).toContain('Continuar');
+    expect(texto).not.toContain('Continuar');
   });
 
-  it('antes de calibrar deja continuar', async () => {
+  it('antes de calibrar NO deja continuar', async () => {
     const texto = await montar('pendiente');
-    expect(texto).toContain('Continuar');
+    expect(texto).not.toContain('Continuar');
+  });
+
+  it('sin calibrar explica por qué no puede seguir', async () => {
+    const texto = await montar('pendiente');
+    expect(texto).toContain('Calibrá para continuar');
+  });
+
+  // 'fallida' (calibración de 4 puntos incompleta: se salió de pantalla completa,
+  // o no midió una esquina) es tan bloqueante como 'sin_camara': la cámara andaba
+  // bien, pero no hay baseline confiable con el que rendir.
+  it('calibración fallida NO deja continuar', async () => {
+    const texto = await montar('fallida');
+    expect(texto).not.toContain('Continuar');
+  });
+
+  it('calibración fallida explica por qué no puede seguir', async () => {
+    const texto = await montar('fallida');
+    expect(texto).toContain('Calibrá para continuar');
   });
 });

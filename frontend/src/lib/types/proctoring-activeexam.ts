@@ -195,6 +195,10 @@ export interface SesionProctoringDetalle extends SesionProctoringResumen {
   // (con la que se calculó `score`). NULL = sesión anterior a este change o config
   // no disponible al crearla → se puntuó con la config viva de ese momento.
   config_snapshot?: ConfigSnapshotSesion | null;
+  // migración 0108: con qué cero se evaluó la mirada de esta sesión. NULL =
+  // sesión sin calibrar (pre-migración o sin cámara). Descriptiva — NUNCA
+  // participó del score de arriba (reglas duras #5/#6).
+  calibracion?: CalibracionSesion | null;
 }
 
 /** Foto de config de scoring persistida en una sesión al crearla (migration 0083). */
@@ -202,6 +206,17 @@ export interface ConfigSnapshotSesion {
   umbral_cola_revision: number;
   scoring_weights: Record<string, number>;
   scoring_desactivados: string[];
+}
+
+/** Con qué cero se evaluó la mirada de la sesión (migración 0108). Descriptiva,
+ *  nunca evidencia (reglas duras #5/#6). */
+export interface CalibracionSesion {
+  centro: { x: number; y: number };
+  /** [min, max] medido en las 4 esquinas. `null` si fue un solo punto de respaldo. */
+  rango_x: [number, number] | null;
+  rango_y: [number, number] | null;
+  origen: 'paso_previo' | 'respaldo';
+  muestras_por_punto: number;
 }
 
 // ── Chat bidireccional proctor↔alumno (C-15) ──────────────────────────────

@@ -67,6 +67,8 @@ from app.infrastructure.persistence.repositories.moodle_writeback import (
 )
 from app.presentation.api.v1.proctoring.sessions.schemas import (
     BiometriaDetalle,
+    CalibracionIn,
+    CalibracionOut,
     CerrarForzadoIn,
     CerrarForzadoOut,
     CrearSesionIn,
@@ -958,7 +960,60 @@ def create_sessions_router(
             cierre_forzado_en=sesion.cierre_forzado_en,
             cierre_forzado_motivo=sesion.cierre_forzado_motivo,
             config_snapshot=sesion.config_snapshot,
+            calibracion=sesion.calibracion,
         )
+
+    @router.patch(
+        "/sessions/{session_id}/calibracion",
+        response_model=CalibracionOut,
+        summary="Guardar la calibracion de mirada de la sesion (descriptiva, no evidencia)",
+    )
+    async def guardar_calibracion_sesion(
+        session_id: str,
+        body: CalibracionIn,
+        db: Annotated[AsyncSession, Depends(get_db)],
+        principal: Annotated[AuthenticatedPrincipal, Depends(require_autenticado)],
+    ) -> CalibracionOut:
+        """Persiste con que cero se evaluo la mirada de esta sesion.
+
+        Best-effort desde el punto de vista del examen: la calibracion YA se
+        aplico localmente en StateTransitionRules antes de esta llamada — si
+        esta llamada falla, el examen sigue igual, solo queda sin registro
+        server-side para quien revise la sesion despues. NUNCA participa del
+        score ni de ninguna decision automatica (reglas duras #5/#6).
+
+        H1 (IDOR): 404 si la sesion no existe o no es del alumno autenticado —
+        mismo criterio que submit_respuestas/finalizar_sesion.
+        """
+        sesion_model = (
+            await db.execute(
+                select(ProctoringSessionModel).where(
+                    ProctoringSessionModel.id == session_id
+                )
+            )
+        ).scalar_one_or_none()
+        if sesion_model is None or not _principal_es_dueno(sesion_model, principal):
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=f"Sesion {session_id!r} no encontrada",
+            )
+        sesion = await session_service.guardar_calibracion(
+            db,
+            session_id,
+            {
+                "centro": body.centro,
+                "rango_x": body.rango_x,
+                "rango_y": body.rango_y,
+                "origen": body.origen,
+                "muestras_por_punto": body.muestras_por_punto,
+            },
+        )
+        if sesion is None:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=f"Sesion {session_id!r} no encontrada",
+            )
+        return CalibracionOut(id=sesion.id, calibracion=sesion.calibracion)
 
     @router.post(
         "/sessions/{session_id}/respuestas",

@@ -250,4 +250,36 @@ export const sesionApi = {
       return [];
     }
   },
+
+  /**
+   * Guarda con qué cero se evaluó la mirada de esta sesión (descriptivo, NUNCA
+   * evidencia — reglas duras #5/#6). Real: PATCH /proctoring/sessions/{sessionId}/calibracion
+   *
+   * Best-effort: la calibración YA se aplicó LOCALMENTE en `StateTransitionRules`
+   * antes de esta llamada (ver `useExamProctoring.ts`). Si esto falla (red caída
+   * justo al arrancar, con todos entrando a la vez), el examen sigue igual —
+   * solo queda sin registro server-side para quien revise la sesión después.
+   * Por eso degrada en silencio en vez de propagar, a diferencia del resto de
+   * los métodos de este archivo.
+   */
+  async guardarCalibracionSesion(
+    sessionId: string,
+    calibracion: {
+      centro: { x: number; y: number };
+      rango_x: [number, number] | null;
+      rango_y: [number, number] | null;
+      origen: 'paso_previo' | 'respaldo';
+      muestras_por_punto: number;
+    },
+  ): Promise<void> {
+    try {
+      await realFetch(
+        `/proctoring/sessions/${sessionId}/calibracion`,
+        { method: 'PATCH', body: JSON.stringify(calibracion) },
+        'demo',
+      );
+    } catch {
+      // Descriptivo, no evidencia: perderlo no afecta la rendición ni el score.
+    }
+  },
 };

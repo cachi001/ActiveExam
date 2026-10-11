@@ -254,6 +254,63 @@ describe("calibracion de baseline de mirada (camara fisicamente descentrada)", (
   });
 });
 
+describe("calibracion de 4 esquinas: factor vertical MEDIDO en vez de adivinado", () => {
+  it("un rango angosto en vertical y ancho en horizontal da un factor CHICO (medido, no 2.5)", () => {
+    const rules = new StateTransitionRules();
+    // rangoX ancho (0.5), rangoY angosto (0.2) -> proporcion 0.2/0.5 = 0.4, clamp a 1.0 (minimo).
+    rules.calibrarGaze({ x: 0, y: 0 }, { rangoX: [-0.25, 0.25], rangoY: [-0.1, 0.1] });
+    // Con el factor fijo (2.5) el umbral vertical seria 0.5 y esto NO dispararia.
+    // Con el factor medido (clampeado a 1.0) el umbral vertical es 0.20: SI dispara.
+    rules.process({ ts_ms: 0, face_count: 1, gaze: { x: 0, y: 0.3 } });
+    rules.process({ ts_ms: 2000, face_count: 1, gaze: { x: 0, y: 0.3 } });
+    const events = rules.process({ ts_ms: 4500, face_count: 1, gaze: { x: 0, y: 0.3 } });
+    expect(events).toHaveLength(1);
+  });
+
+  it("un rango parejo entre ejes da un factor cercano a 1, mas estricto que el fijo", () => {
+    const rules = new StateTransitionRules();
+    rules.calibrarGaze({ x: 0, y: 0 }, { rangoX: [-0.2, 0.2], rangoY: [-0.22, 0.22] });
+    // proporcion 0.44/0.4 = 1.1 -> umbral vertical = 0.20 * 1.1 = 0.22.
+    rules.process({ ts_ms: 0, face_count: 1, gaze: { x: 0, y: 0.3 } });
+    rules.process({ ts_ms: 2000, face_count: 1, gaze: { x: 0, y: 0.3 } });
+    const events = rules.process({ ts_ms: 4500, face_count: 1, gaze: { x: 0, y: 0.3 } });
+    expect(events).toHaveLength(1);
+  });
+
+  it("un rango vertical desproporcionado se acota a FACTOR_VERTICAL_MAXIMO (4.0), no queda ilimitado", () => {
+    const rules = new StateTransitionRules();
+    // proporcion real 10/0.1 = 100 -> clamp a 4.0. Umbral vertical = 0.20*4 = 0.80.
+    rules.calibrarGaze({ x: 0, y: 0 }, { rangoX: [-0.05, 0.05], rangoY: [-5, 5] });
+    rules.process({ ts_ms: 0, face_count: 1, gaze: { x: 0, y: 0.7 } });
+    rules.process({ ts_ms: 2000, face_count: 1, gaze: { x: 0, y: 0.7 } });
+    const events = rules.process({ ts_ms: 4500, face_count: 1, gaze: { x: 0, y: 0.7 } });
+    // Con el clamp (0.80) 0.7 NO dispara. Sin clamp (umbral 20) jamas dispararia
+    // tampoco, asi que lo que prueba este caso es que el clamp no lo vuelve MENOS
+    // sensible que el maximo permitido.
+    expect(events).toHaveLength(0);
+  });
+
+  it("sin rango (calibracion de un solo punto, ej. respaldo del examen) sigue usando el factor fijo 2.5", () => {
+    const rules = new StateTransitionRules();
+    rules.calibrarGaze({ x: 0, y: 0 });
+    // Umbral vertical = 0.20*2.5 = 0.50. 0.45 no dispara con el factor fijo.
+    rules.process({ ts_ms: 0, face_count: 1, gaze: { x: 0, y: 0.45 } });
+    rules.process({ ts_ms: 2000, face_count: 1, gaze: { x: 0, y: 0.45 } });
+    const events = rules.process({ ts_ms: 4500, face_count: 1, gaze: { x: 0, y: 0.45 } });
+    expect(events).toHaveLength(0);
+  });
+
+  it("recalibrar sin rango despues de haber calibrado CON rango vuelve al factor fijo", () => {
+    const rules = new StateTransitionRules();
+    rules.calibrarGaze({ x: 0, y: 0 }, { rangoX: [-0.25, 0.25], rangoY: [-0.1, 0.1] });
+    rules.calibrarGaze({ x: 0, y: 0 }); // recalibra sin rango (ej. respaldo tras perder el previo)
+    rules.process({ ts_ms: 0, face_count: 1, gaze: { x: 0, y: 0.45 } });
+    rules.process({ ts_ms: 2000, face_count: 1, gaze: { x: 0, y: 0.45 } });
+    const events = rules.process({ ts_ms: 4500, face_count: 1, gaze: { x: 0, y: 0.45 } });
+    expect(events).toHaveLength(0);
+  });
+});
+
 // C-76 (15.1/15.2/15.6): cambio_pestana y copiar_pegar ahora disparan captura.
 // El screenshot es CONTEXTO VISUAL (no se re-infiere server-side, a diferencia de
 // multiples_rostros/rostro_ausente) — la severidad no cambia (sigue "media"), y

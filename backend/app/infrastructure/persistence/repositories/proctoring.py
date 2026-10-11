@@ -915,6 +915,24 @@ class ProctoringRepository:
             await self._db.refresh(sesion)
         return sesion
 
+    async def guardar_calibracion(
+        self, session_id: str, calibracion: dict
+    ) -> ProctoringSessionModel | None:
+        """Guarda la calibracion de mirada medida en el cliente.
+
+        Sobrescribe: una sesion puede recalibrar (reintentos antes de que
+        arranque el cronometro), y solo interesa la ULTIMA medicion. Descriptiva,
+        nunca participa del score ni de ninguna decision automatica (reglas
+        duras #5/#6). None si la sesion no existe.
+        """
+        sesion = await self._db.get(ProctoringSessionModel, session_id)
+        if sesion is None:
+            return None
+        sesion.calibracion = calibracion
+        await self._db.commit()
+        await self._db.refresh(sesion)
+        return sesion
+
     # -------------------------------------------------------------------------
     # Events
     # -------------------------------------------------------------------------

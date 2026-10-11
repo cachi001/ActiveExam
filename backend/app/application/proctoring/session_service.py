@@ -381,3 +381,13 @@ async def cerrar_forzado(
     la sesion no existe. Ver ProctoringRepository.cerrar_forzado."""
     repo = ProctoringRepository(db)
     return await repo.cerrar_forzado(session_id, motivo=motivo, tutor_actor=tutor_actor)
+
+
+async def guardar_calibracion(
+    db: AsyncSession, session_id: str, calibracion: dict
+) -> ProctoringSessionModel | None:
+    """Persiste la calibracion de mirada de la sesion (descriptiva, reglas #5/#6).
+
+    None si la sesion no existe. Ver ProctoringRepository.guardar_calibracion."""
+    repo = ProctoringRepository(db)
+    return await repo.guardar_calibracion(session_id, calibracion)

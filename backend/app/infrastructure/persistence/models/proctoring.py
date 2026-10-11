@@ -216,6 +216,20 @@ class ProctoringSessionModel(Base):
         comment="Soft-hide administrativo de la fila en el panel de resultados",
     )
 
+    # migracion 0108: calibracion de mirada medida antes de empezar (4 esquinas
+    # en pantalla completa) o, en su defecto, la de respaldo que corre el propio
+    # examen (un solo punto). Descriptiva, NUNCA evidencia ni criterio de score
+    # (reglas duras #5/#6): solo documenta con que cero se evaluo esta sesion.
+    calibracion: Mapped[dict | None] = mapped_column(
+        JSONB, nullable=True,
+        comment=(
+            "Calibracion de mirada de la sesion: centro {x,y}, rango_x/rango_y "
+            "(si hubo 4 puntos; None si fue un solo punto de respaldo), origen "
+            "('paso_previo'|'respaldo') y muestras_por_punto. NULL = sesion sin "
+            "calibrar (pre-migracion o sin camara)."
+        ),
+    )
+
     eventos: Mapped[list[ProctoringEventModel]] = relationship(
         back_populates="sesion",
         cascade="all, delete-orphan",

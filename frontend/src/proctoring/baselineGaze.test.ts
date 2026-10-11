@@ -7,6 +7,7 @@ import {
   debeCalibrarEnElExamen,
   guardarBaselineGaze,
   olvidarBaselineGaze,
+  rangoGazeGuardado,
 } from './baselineGaze';
 
 beforeEach(() => olvidarBaselineGaze());
@@ -45,6 +46,35 @@ describe('baseline de mirada del paso de calibración', () => {
     guardarBaselineGaze({ x: 1, y: 1 });
     guardarBaselineGaze(null);
     expect(debeCalibrarEnElExamen()).toBe(true);
+  });
+});
+
+describe('rango de 4 esquinas guardado junto al baseline', () => {
+  it('sin calibrar no hay rango', () => {
+    expect(rangoGazeGuardado()).toBeNull();
+  });
+
+  it('un baseline de un solo punto (respaldo) no trae rango', () => {
+    guardarBaselineGaze({ x: 0.1, y: 0 });
+    expect(rangoGazeGuardado()).toBeNull();
+  });
+
+  it('la calibración de 4 esquinas guarda el rango junto al baseline', () => {
+    const rangoValor = { rangoX: [-0.2, 0.2] as [number, number], rangoY: [-0.5, 0.5] as [number, number] };
+    guardarBaselineGaze({ x: 0, y: 0 }, rangoValor);
+    expect(rangoGazeGuardado()).toEqual(rangoValor);
+  });
+
+  it('guardar null como baseline descarta el rango, aunque se pase uno', () => {
+    guardarBaselineGaze({ x: 0, y: 0 }, { rangoX: [-0.2, 0.2], rangoY: [-0.5, 0.5] });
+    guardarBaselineGaze(null, { rangoX: [-0.1, 0.1], rangoY: [-0.1, 0.1] });
+    expect(rangoGazeGuardado()).toBeNull();
+  });
+
+  it('olvidarBaselineGaze descarta el rango junto con el baseline', () => {
+    guardarBaselineGaze({ x: 0, y: 0 }, { rangoX: [-0.2, 0.2], rangoY: [-0.5, 0.5] });
+    olvidarBaselineGaze();
+    expect(rangoGazeGuardado()).toBeNull();
   });
 });
 

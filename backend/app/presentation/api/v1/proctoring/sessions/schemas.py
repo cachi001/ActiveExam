@@ -11,7 +11,7 @@ import uuid as _uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class FinalizarSesionOut(BaseModel):
@@ -219,6 +219,59 @@ class SesionDetalle(BaseModel):
     # UI la muestra para que quede claro que un cambio de config posterior NO
     # afecta a esta sesion ya rendida.
     config_snapshot: dict | None = None
+    # migracion 0108: con que cero se evaluo la mirada de esta sesion. NULL =
+    # sesion sin calibrar (pre-migracion o sin camara). Descriptiva, nunca
+    # participo del score de arriba (reglas duras #5/#6).
+    calibracion: dict | None = None
+
+
+# --- Calibracion de mirada de la sesion (migracion 0108) ---
+
+
+class CalibracionIn(BaseModel):
+    """Body de PATCH /sessions/{id}/calibracion.
+
+    Descriptiva, NUNCA evidencia (reglas duras #5/#6): no participa del score,
+    solo documenta con que cero se evaluo la mirada de esta sesion.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    centro: dict[str, float] = Field(..., description="{x, y} — punto usado como cero")
+    rango_x: list[float] | None = Field(
+        None,
+        description="[min, max] medido en las 4 esquinas de la pantalla. None si fue un solo punto de respaldo.",
+    )
+    rango_y: list[float] | None = None
+    origen: str = Field(
+        ...,
+        description="'paso_previo' (4 esquinas, pantalla completa) o 'respaldo' (1 punto, dentro del examen)",
+    )
+    muestras_por_punto: int = Field(..., ge=0)
+
+    @field_validator("origen")
+    @classmethod
+    def _origen_valido(cls, v: str) -> str:
+        validos = {"paso_previo", "respaldo"}
+        if v not in validos:
+            raise ValueError(f"origen debe ser uno de {sorted(validos)}")
+        return v
+
+    @field_validator("centro")
+    @classmethod
+    def _centro_tiene_x_y(cls, v: dict[str, float]) -> dict[str, float]:
+        if set(v.keys()) != {"x", "y"}:
+            raise ValueError("centro debe tener exactamente 'x' e 'y'")
+        return v
+
+
+class CalibracionOut(BaseModel):
+    """Respuesta de PATCH /sessions/{id}/calibracion → 200."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    calibracion: dict
 
 
 # --- C-15 (3.2): observaciones del tutor (insumo de C-16) ---

@@ -1,29 +1,25 @@
 /**
  * CalibracionPanel — medir cuán descentrada está la cámara, desde Test de detección.
  *
- * La calibración de mirada ya existía y corre al inicio del examen, pero ahí el
- * docente no la ve: es un overlay de tres segundos en la pantalla del alumno. Esta
- * pantalla es justamente donde se comprueba que el motor detecta bien ANTES de un
- * examen real, y no tenía forma de medir esto.
- *
- * Reusa `capturarBaselineGaze`, la misma función que usa el examen. No duplica la
- * captura: si mañana cambia cómo se calibra, cambia en un solo lugar.
+ * Antes tenía su propia captura de UN punto con constantes propias (3000ms/100ms),
+ * distintas de las que usa el alumno — el docente veía un diagnóstico que no
+ * reproducía lo que el alumno realmente vive. Ahora monta el MISMO componente
+ * fullscreen de 4 esquinas (`CalibracionCuatroPuntos`) que corre en el paso previo
+ * del ingreso: si mañana cambia cómo se calibra, cambia en un solo lugar y las dos
+ * pantallas quedan iguales por construcción, no por disciplina de mantenerlas sincronizadas.
  *
  * Presentacional salvo por la captura, que necesita el video y el motor.
  */
 import { useState } from 'react';
 import { Icon, Card, Button, SectionTitle, Badge } from '../../ui/components';
-import { capturarBaselineGaze } from '../../proctoring/useExamProctoring';
+import { CalibracionCuatroPuntos } from '../../proctoring/CalibracionCuatroPuntos';
+import type { RangoCalibracion } from '../../proctoring/calibracionRango';
 import type { VisionEngine } from '../../vision/VisionEngine';
 import {
   interpretarCalibracion,
   type ResultadoCalibracion,
   type NivelDesvio,
 } from './calibracionCamara';
-
-/** Los mismos que usa el examen, para medir en las mismas condiciones. */
-const DURACION_MS = 3000;
-const INTERVALO_MS = 100;
 
 const TONO: Record<NivelDesvio, 'success' | 'warning' | 'error'> = {
   centrada: 'success',
@@ -49,8 +45,12 @@ interface Props {
   engine: VisionEngine | null;
   /** La cámara tiene que estar encendida: sin frames no hay nada que medir. */
   camaraActiva: boolean;
-  /** Se llama con el baseline capturado para que el pipeline lo use. */
-  onCalibrado: (baseline: { x: number; y: number } | null) => void;
+  /** Se llama con el baseline (y el rango de 4 esquinas, si se midió) para que
+   *  el pipeline del harness los use. */
+  onCalibrado: (
+    baseline: { x: number; y: number } | null,
+    rango?: { rangoX: [number, number]; rangoY: [number, number] },
+  ) => void;
 }
 
 export default function CalibracionPanel({
@@ -60,20 +60,17 @@ export default function CalibracionPanel({
   onCalibrado,
 }: Props) {
   const [resultado, setResultado] = useState<ResultadoCalibracion>({ estado: 'sin_calibrar' });
+  const [calibrando, setCalibrando] = useState(false);
 
-  const calibrar = async () => {
-    if (!engine) return;
-    setResultado({ estado: 'calibrando' });
-    const baseline = await capturarBaselineGaze(
-      videoRef,
-      engine,
-      DURACION_MS,
-      INTERVALO_MS,
-      () => false,
-    );
-    setResultado(interpretarCalibracion(baseline));
-    onCalibrado(baseline);
-  };
+  function alCompletarCalibracion(rango: RangoCalibracion | null) {
+    setCalibrando(false);
+    setResultado(interpretarCalibracion(rango));
+    if (rango) {
+      onCalibrado(rango.centro, { rangoX: rango.rangoX, rangoY: rango.rangoY });
+    } else {
+      onCalibrado(null);
+    }
+  }
 
   const limpiar = () => {
     setResultado({ estado: 'sin_calibrar' });
@@ -125,17 +122,15 @@ export default function CalibracionPanel({
         </div>
       )}
 
-      {resultado.estado === 'calibrando' && (
+      {calibrando && (
         // `primary-fixed` es el token de fondo suave del design system. Con
         // `primary-container` (#4469eb, azul fuerte) el texto encima no se lee.
         <div className="flex items-start gap-3 rounded-lg bg-primary-fixed px-3 py-3">
           <Icon name="progress_activity" className="ae-spin text-primary text-[22px] shrink-0" />
           <div>
-            <p className="text-label-md font-medium text-on-surface">
-              Mirá al centro de la pantalla, de frente
-            </p>
+            <p className="text-label-md font-medium text-on-surface">Calibrando en pantalla completa…</p>
             <p className="text-label-sm text-on-surface-variant">
-              Quedate mirando el centro unos segundos, sin mover la cabeza.
+              Van a aparecer 4 puntos marcados, uno por vez. Es lo mismo que ve el alumno.
             </p>
           </div>
         </div>
@@ -148,9 +143,8 @@ export default function CalibracionPanel({
         >
           <Icon name="error" className="text-[18px] shrink-0 mt-0.5 text-error" fill />
           <p className="text-label-md text-on-surface">
-            No se pudo medir: no se detectó una cara durante la medición. Ubicate de
-            frente a la cámara, con la cara entera dentro del cuadro y luz de frente,
-            y probá de nuevo.
+            No se pudo medir alguna de las 4 esquinas. Ubicate de frente a la cámara, con
+            la cara entera dentro del cuadro y luz de frente, y probá de nuevo.
           </p>
         </div>
       )}
@@ -179,6 +173,14 @@ export default function CalibracionPanel({
           <p className="text-label-sm text-on-surface-variant font-mono">
             baseline x {resultado.baseline.x.toFixed(4)} · y {resultado.baseline.y.toFixed(4)}
           </p>
+          {/* Reemplaza al factor fijo (2.5) que usa la detección real cuando NO
+              hay esta medición — acá se ve el valor MEDIDO en las 4 esquinas de
+              esta cámara/pantalla en particular. */}
+          {resultado.factorVerticalMedido !== null && (
+            <p className="text-label-sm text-on-surface-variant font-mono">
+              factor vertical medido {resultado.factorVerticalMedido.toFixed(2)}
+            </p>
+          )}
         </div>
       )}
 
@@ -192,12 +194,30 @@ export default function CalibracionPanel({
           variant="primary"
           size="sm"
           icon="visibility"
-          onClick={() => void calibrar()}
-          disabled={!camaraActiva || !engine || resultado.estado === 'calibrando'}
+          onClick={() => {
+            // Síncrono, en el propio click (ver CalibracionCuatroPuntos): pedida
+            // después de un `await` deja de contar como gesto del usuario.
+            void document.documentElement.requestFullscreen?.().catch(() => {});
+            setResultado({ estado: 'calibrando' });
+            setCalibrando(true);
+          }}
+          disabled={!camaraActiva || !engine || calibrando}
         >
-          {resultado.estado === 'calibrando' ? 'Midiendo…' : 'Calibrar cámara'}
+          {calibrando ? 'Midiendo…' : 'Calibrar cámara'}
         </Button>
       </div>
+
+      {calibrando && engine && (
+        <CalibracionCuatroPuntos
+          videoRef={videoRef}
+          engine={engine}
+          onCompleto={alCompletarCalibracion}
+          onCancelar={() => {
+            setCalibrando(false);
+            setResultado({ estado: 'sin_calibrar' });
+          }}
+        />
+      )}
     </Card>
   );
 }

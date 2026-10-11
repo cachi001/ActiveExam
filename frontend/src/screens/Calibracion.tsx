@@ -28,14 +28,13 @@ export default function Calibracion() {
   return (
     <StudentShell step={3} backTo="/biometria" ocultarNavegacion>
       <div className="max-w-2xl mx-auto space-y-lg animate-in fade-in duration-300">
-        <div className="text-center space-y-base">
-          <h1 className="font-headline text-headline-md text-on-surface">
+        {/* Solo el título. La explicación vivía acá Y adentro de la tarjeta, casi
+            con las mismas palabras: en un teléfono eran seis líneas repetidas antes
+            de poder hacer nada. La instrucción quedó donde está el botón. */}
+        <div className="text-center">
+          <h1 className="font-headline text-headline-md sm:text-headline-lg text-on-surface">
             Calibración de la mirada
           </h1>
-          <p className="text-body-md text-on-surface-variant">
-            Un paso rápido para que el sistema sepa cómo mirás la pantalla y no confunda
-            que estés leyendo con una distracción.
-          </p>
         </div>
 
         <CalibracionPaso videoRef={videoRef} estado={estado} onEstado={setEstado} />
@@ -48,12 +47,29 @@ export default function Calibracion() {
             En los demás estados sí aparece, incluso sin haber calibrado: perder
             precisión del detector es mucho menos grave que dejar a alguien trabado
             en el ingreso. */}
-        {estado !== 'midiendo' && (
-          <div className="flex justify-center">
-            <Button icon="arrow_forward" onClick={() => navigate('/sala-espera')}>
+        {/* La calibración es OBLIGATORIA (decisión del dueño, 6/9/2026): sin ella
+            la mirada se mide contra el centro de la CÁMARA, o sea que el sistema
+            espera que el alumno mire al lente mientras rinde, y lo marca por leer.
+            No se puede seguir hasta que haya medición.
+
+            No agrega un bloqueo nuevo para quien no tiene cámara: sin cámara no se
+            puede rendir de todos modos, y eso ya lo corta el chequeo de requisitos. */}
+        {estado === 'lista' && (
+          <div className="flex justify-center sm:justify-end">
+            <Button
+              icon="arrow_forward"
+              onClick={() => navigate('/sala-espera')}
+              className="w-full sm:w-auto"
+            >
               Continuar
             </Button>
           </div>
+        )}
+
+        {(estado === 'pendiente' || estado === 'sin_camara' || estado === 'fallida') && (
+          <p className="text-label-md text-on-surface-variant text-center">
+            Calibrá para continuar: sin esto el sistema puede marcarte por leer.
+          </p>
         )}
       </div>
     </StudentShell>

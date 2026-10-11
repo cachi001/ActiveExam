@@ -10,6 +10,7 @@
  * cámara muy descentrada y sin calibrar, alguien que lee normalmente el examen
  * arranca ya pasado del umbral. Es un falso positivo contra quien no hizo nada.
  */
+import type { RangoCalibracion } from '../../proctoring/calibracionRango';
 
 /** Desde acá el desvío ya se nota, pero todavía no compromete la detección. */
 export const DESVIO_LEVE = 0.08;
@@ -27,7 +28,8 @@ export type DireccionDesvio = 'izquierda' | 'derecha' | 'arriba' | 'abajo' | nul
 export type ResultadoCalibracion =
   | { estado: 'sin_calibrar' }
   | { estado: 'calibrando' }
-  /** No se pudo capturar ninguna muestra: rostro ausente, cámara tapada o motor sin mesh. */
+  /** No se pudo medir las 4 esquinas: rostro ausente en alguna, cámara tapada,
+   *  motor sin mesh, o se salió de pantalla completa a mitad de camino. */
   | { estado: 'fallida' }
   | {
       estado: 'lista';
@@ -37,6 +39,11 @@ export type ResultadoCalibracion =
       nivel: NivelDesvio;
       direccion: DireccionDesvio;
       consejo: string;
+      /** Proporción vertical/horizontal MEDIDA en las 4 esquinas — reemplaza al
+       *  factor fijo (2.5) que `stateTransitionRules.ts` usa cuando no hay esta
+       *  medición (ver `calibrarGaze`). Sin clamp: acá interesa el valor real
+       *  medido, el clamp de seguridad vive en la detección, no en el diagnóstico. */
+      factorVerticalMedido: number | null;
     };
 
 const CONSEJO: Record<NivelDesvio, string> = {
@@ -67,20 +74,22 @@ function direccionDe(
 }
 
 /**
- * Traduce el baseline capturado a un diagnóstico.
+ * Traduce el rango de 4 esquinas capturado a un diagnóstico.
  *
- * `null` (que es lo que devuelve `capturarBaselineGaze` cuando no juntó ninguna
- * muestra) se reporta como fallida, NUNCA como {0,0}: un cero diría "cámara
- * perfectamente centrada", que es justo la conclusión opuesta a la realidad.
+ * `null` (que es lo que devuelve `CalibracionCuatroPuntos` cuando no pudo medir
+ * alguna esquina, o se salió de pantalla completa) se reporta como fallida,
+ * NUNCA como {0,0}: un cero diría "cámara perfectamente centrada", que es justo
+ * la conclusión opuesta a la realidad.
  */
-export function interpretarCalibracion(
-  baseline: { x: number; y: number } | null,
-): ResultadoCalibracion {
-  if (baseline === null) return { estado: 'fallida' };
+export function interpretarCalibracion(rango: RangoCalibracion | null): ResultadoCalibracion {
+  if (rango === null) return { estado: 'fallida' };
+  const baseline = rango.centro;
   // Distancia euclídea: sumar los ejes exageraría el desvío de una cámara corrida
   // en diagonal y mandaría a mover cámaras que están bien.
   const desvio = Math.hypot(baseline.x, baseline.y);
   const nivel = nivelDe(desvio);
+  const anchoX = rango.rangoX[1] - rango.rangoX[0];
+  const altoY = rango.rangoY[1] - rango.rangoY[0];
   return {
     estado: 'lista',
     baseline,
@@ -88,5 +97,6 @@ export function interpretarCalibracion(
     nivel,
     direccion: direccionDe(baseline, nivel),
     consejo: CONSEJO[nivel],
+    factorVerticalMedido: anchoX > 0 ? altoY / anchoX : null,
   };
 }

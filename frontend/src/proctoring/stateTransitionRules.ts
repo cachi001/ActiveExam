@@ -128,6 +128,17 @@ const HEAD_YAW_THRESHOLD_DEG = 20;
 const VERTICAL_TOLERANCE_FACTOR = 2.5;
 
 /**
+ * Límites del factor vertical MEDIDO (calibración de 4 esquinas, ver
+ * `calibrarGaze`). Una medición mala (cámara que perdió el rostro en una
+ * esquina, luz rara) no puede volver la detección inútil en ningún sentido:
+ * ni tan angosta que un giro de cabeza la dispare, ni tan ancha que deje de
+ * detectar nada. El rango cubre con margen a ambos lados del factor fijo (2.5)
+ * que reemplaza — no lo vuelve irreconocible, lo corrige.
+ */
+const FACTOR_VERTICAL_MINIMO = 1.0;
+const FACTOR_VERTICAL_MAXIMO = 4.0;
+
+/**
  * Configuracion por defecto de los umbrales de deteccion.
  *
  * C-46 (ajuste fino basado en observaciones del harness con motor MediaPipe real):
@@ -183,6 +194,11 @@ export class StateTransitionRules {
   // fija el punto que ESE alumno produce cuando mira bien (capturado antes de
   // empezar el examen); toda evaluacion de gaze pasa a medirse relativa a el.
   private gazeBaseline: { x: number; y: number } = { x: 0, y: 0 };
+  // Calibración de 4 esquinas (opcional): reemplaza VERTICAL_TOLERANCE_FACTOR
+  // por la proporción vertical/horizontal REALMENTE medida en la pantalla de
+  // esta persona, en vez de la adivinada. `null` sin ese dato (solo baseline
+  // de un punto, calibración de respaldo, o sesión sin calibrar).
+  private factorVerticalMedido: number | null = null;
 
   // C-25: estado de de-duplicacion para senales de navegador instantaneas.
   // Previene re-emision mientras la senal persiste; se resetea cuando la senal se limpia.
@@ -201,9 +217,29 @@ export class StateTransitionRules {
    * Fija el baseline de mirada calibrado para este alumno/sesion (capturado en un
    * paso previo al examen, mirando al centro de la pantalla unos segundos). Sin
    * calibrar, el baseline es {0,0} (comportamiento retrocompatible).
+   *
+   * `rango`, si se pasa (calibración de 4 esquinas), reemplaza
+   * VERTICAL_TOLERANCE_FACTOR por la proporción vertical/horizontal MEDIDA
+   * (rangoY/rangoX), acotada entre FACTOR_VERTICAL_MINIMO y
+   * FACTOR_VERTICAL_MAXIMO. Sin `rango` (calibración de un solo punto, ej. el
+   * respaldo del examen), sigue usando el factor fijo — no hay 4 puntos de los
+   * que medir una proporción real.
    */
-  calibrarGaze(baseline: { x: number; y: number }): void {
+  calibrarGaze(
+    baseline: { x: number; y: number },
+    rango?: { rangoX: [number, number]; rangoY: [number, number] },
+  ): void {
     this.gazeBaseline = baseline;
+    if (!rango) {
+      this.factorVerticalMedido = null;
+      return;
+    }
+    const anchoX = rango.rangoX[1] - rango.rangoX[0];
+    const altoY = rango.rangoY[1] - rango.rangoY[0];
+    this.factorVerticalMedido =
+      anchoX > 0
+        ? Math.min(FACTOR_VERTICAL_MAXIMO, Math.max(FACTOR_VERTICAL_MINIMO, altoY / anchoX))
+        : null;
   }
 
   /**
@@ -272,7 +308,8 @@ export class StateTransitionRules {
     // encima del umbral, que era como leer la parte de abajo de la pantalla
     // terminaba contando como mirada desviada.
     const umbralHorizontal = this.cfg.gaze_deviation_threshold;
-    const umbralVertical = umbralHorizontal * VERTICAL_TOLERANCE_FACTOR;
+    const umbralVertical =
+      umbralHorizontal * (this.factorVerticalMedido ?? VERTICAL_TOLERANCE_FACTOR);
     // C-35: la condicion "desviado" combina dos fuentes de senal:
     //   1. Vector iris: supera el umbral de SU eje (senal principal).
     //   2. Head yaw (opcional): |head_yaw_deg| > HEAD_YAW_THRESHOLD_DEG (senal complementaria).
